@@ -1,10 +1,12 @@
 import rclpy
 from rclpy.node import Node
+import numpy as np
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
 from nav_msgs.msg import OccupancyGrid
 from .utils import LineTrajectory
+from rrt import RRT
 
 
 class PathPlan(Node):
@@ -26,7 +28,8 @@ class PathPlan(Node):
             OccupancyGrid,
             self.map_topic,
             self.map_cb,
-            1)
+            1
+        )
 
         self.goal_sub = self.create_subscription(
             PoseStamped,
@@ -50,6 +53,10 @@ class PathPlan(Node):
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
+        self.x_bounds = (-100, 100)
+        self.y_bounds = (-100, 100)
+        self.obstacles = [] #x,y,radius
+
     def map_cb(self, msg):
         raise NotImplementedError
 
@@ -62,6 +69,8 @@ class PathPlan(Node):
     def plan_path(self, start_point, end_point, map):
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
+        rrt = RRT(start_point, end_point, self.obstacles, self.x_bounds, self.y_bounds)
+        path = rrt.plan()
 
 
 def main(args=None):
