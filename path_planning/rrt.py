@@ -16,7 +16,7 @@ class RRT:
         max_extend_length=3.0,
         path_resolution=0.5,
         goal_sample_rate=0.05,
-        max_iter=200,
+        max_iter=1000,
     ):
         self.start = self.Node(start)
         self.goal = self.Node(goal)

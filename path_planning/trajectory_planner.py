@@ -4,9 +4,11 @@ import numpy as np
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose
+from visualization_msgs.msg import MarkerArray, Marker
 from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
 from .rrt import RRT
+import tf_transformations as tf
 
 
 class PathPlan(Node):
@@ -51,15 +53,34 @@ class PathPlan(Node):
             10
         )
 
+        self.obstacles_pub = self.create_publisher(
+            PoseArray,
+            "/obstacles",
+            10
+        )
+
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
-        self.x_bounds = (-50, 50)
-        self.y_bounds = (-50, 50)
-        self.obstacles = [] #x,y,radius
+        self.x_bounds = (-61, 25) # in meters
+        self.y_bounds = (-16, 48) # in meters
+        self.obstacles = [] #x,y,radius (in meters)
         self.start = None
 
+        # self.create_timer(0.05, self.timer_cb)
+
     def map_cb(self, msg):
-        raise NotImplementedError
+        T = self.pose_to_T(msg.info.origin)
+        table = np.array(msg.data)
+        table = table.reshape((msg.info.height, msg.info.width))
+        for i, row in enumerate(table):
+            for j, val in enumerate(row):
+                if val > 85:
+                    px = np.eye(3)
+                    px[1,2] = i*msg.info.resolution
+                    px[0,2] = j*msg.info.resolution
+                    p = T@px
+                    self.obstacles.append([p[0,2], p[1,2], 0.25])
+        self.get_logger().info("Map processed")
 
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
@@ -67,9 +88,47 @@ class PathPlan(Node):
     def goal_cb(self, msg):
         goal = [msg.pose.position.x, msg.pose.position.y]
         rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
-        self.trajectory.points = rrt.plan()
+        self.get_logger().info("Finding path")
+        traj = rrt.plan()
+        self.trajectory.points = traj
+        self.get_logger().info(f"Path found: {traj}")
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
+
+    def pose_to_T(self, pose_msg):
+        th = tf.euler_from_quaternion([
+            pose_msg.orientation.x,
+            pose_msg.orientation.y,
+            pose_msg.orientation.z,
+            pose_msg.orientation.w,
+        ])[2]
+        x, y = pose_msg.position.x, pose_msg.position.y
+        return np.array([
+            [np.cos(th), -np.sin(th), x],
+            [np.sin(th),  np.cos(th), y],
+            [         0,           0, 1],
+        ])
+    
+    def arr_to_pose_arr(self, arr):
+        msg = PoseArray()
+        msg.header.frame_id = "map"
+        msg.header.stamp = self.get_clock().now().to_msg()
+        a = []
+        for i in arr:
+            pose = Pose()
+            pose.position.x = i[0]
+            pose.position.y = i[1]
+            pose.position.z = 0.0
+            pose.orientation.w = 1.0
+            a.append(pose)
+        msg.poses = a
+        return msg
+
+    def timer_cb(self):
+        if len(self.obstacles) == 0:
+            return
+        self.obstacles_pub.publish(self.arr_to_pose_arr(self.obstacles))
+
 
 def main(args=None):
     rclpy.init(args=args)
