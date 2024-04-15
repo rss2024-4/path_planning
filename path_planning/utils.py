@@ -18,7 +18,7 @@ class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
 
     def __init__(self, node, viz_namespace=None):
-        self.points: List[Tuple[float, float]] = []
+        self.points = []
         self.distances = []
         self.has_acceleration = False
         self.visualize = False

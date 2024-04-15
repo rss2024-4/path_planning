@@ -3,10 +3,10 @@ from rclpy.node import Node
 import numpy as np
 
 assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray
-from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose
+from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
-from rrt import RRT
+from .rrt import RRT
 
 
 class PathPlan(Node):
@@ -45,33 +45,31 @@ class PathPlan(Node):
         )
 
         self.pose_sub = self.create_subscription(
-            PoseWithCovarianceStamped,
-            self.initial_pose_topic,
+            Odometry,
+            self.odom_topic,
             self.pose_cb,
             10
         )
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
 
-        self.x_bounds = (-100, 100)
-        self.y_bounds = (-100, 100)
+        self.x_bounds = (-50, 50)
+        self.y_bounds = (-50, 50)
         self.obstacles = [] #x,y,radius
+        self.start = None
 
     def map_cb(self, msg):
         raise NotImplementedError
 
     def pose_cb(self, pose):
-        raise NotImplementedError
+        self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
 
     def goal_cb(self, msg):
-        raise NotImplementedError
-
-    def plan_path(self, start_point, end_point, map):
+        goal = [msg.pose.position.x, msg.pose.position.y]
+        rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+        self.trajectory.points = rrt.plan()
         self.traj_pub.publish(self.trajectory.toPoseArray())
         self.trajectory.publish_viz()
-        rrt = RRT(start_point, end_point, self.obstacles, self.x_bounds, self.y_bounds)
-        path = rrt.plan()
-
 
 def main(args=None):
     rclpy.init(args=args)
