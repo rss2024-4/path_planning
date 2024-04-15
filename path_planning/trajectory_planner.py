@@ -7,7 +7,7 @@ from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray,
 from visualization_msgs.msg import MarkerArray, Marker
 from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
-from .rrt import RRT
+from .rrt import RRT, RRTStar
 import tf_transformations as tf
 
 
@@ -87,7 +87,8 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
         goal = [msg.pose.position.x, msg.pose.position.y]
-        rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+        # rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+        rrt = RRTStar(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
         self.get_logger().info("Finding path")
         traj = rrt.plan()
         self.trajectory.points = traj
