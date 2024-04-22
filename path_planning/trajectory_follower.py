@@ -149,38 +149,43 @@ class PurePursuit(Node):
     def find_lookahead(self, p, closestIdx):
         points_ahead = np.array(self.points[closestIdx:])
         intersections = []
-        for i in range(len(points_ahead)-1):
-            start, end = points_ahead[i], points_ahead[i+1]
-            V = end-start
-            a = V.dot(V)
-            b = 2 * V.dot(start - p)
-            c = start.dot(start) + p.dot(p) - 2 * start.dot(p) - self.lookahead**2
+        cur_lookahead = self.lookahead
+        while not intersections:
+            for i in range(len(points_ahead)-1):
+                start, end = points_ahead[i], points_ahead[i+1]
+                V = end-start
+                a = V.dot(V)
+                b = 2 * V.dot(start - p)
+                c = start.dot(start) + p.dot(p) - 2 * start.dot(p) - cur_lookahead**2
 
-
-            # discriminant
-            disc = b**2 - 4 * a * c
-            if disc < 0:
-                continue
-            else:
-                self.get_logger().info('found point in circle')
-                sqrt_disc = np.sqrt(disc)
-                t1 = (-b + sqrt_disc) / (2 * a)
-                t2 = (-b - sqrt_disc) / (2 * a)
-
-                if 0 <= t1 <= 1 and 0 <= t2 <= 1:   # both valid
-                    t = max(t1, t2)
-                elif 0 <= t1 <= 1:
-                    t = t1
-                elif 0 <= t2 <= 1:
-                    t = t2
-                else:
-                    # self.get_logger().info("invalid solutions")
+                # discriminant
+                disc = b**2 - 4 * a * c
+                if disc < 0:
                     continue
-                intersections.append(start + t * V)
-        if not intersections:
-            self.get_logger().info('intersections no exist')
-            return None
-        return intersections[-1]
+                else:
+                    self.get_logger().info('found point in circle')
+                    sqrt_disc = np.sqrt(disc)
+                    t1 = (-b + sqrt_disc) / (2 * a)
+                    t2 = (-b - sqrt_disc) / (2 * a)
+
+                    if 0 <= t1 <= 1 and 0 <= t2 <= 1:   # both valid
+                        t = max(t1, t2)
+                    elif 0 <= t1 <= 1:
+                        t = t1
+                    elif 0 <= t2 <= 1:
+                        t = t2
+                    else:
+                        # self.get_logger().info("invalid solutions")
+                        continue
+                    intersections.append(start + t * V)
+            if not intersections:
+                cur_lookahead += 0.3
+                self.get_logger().info(f'intersections no exist, increasing lookahead to {cur_lookahead}')
+            else:
+                return intersections[-1]
+        
+        # return None
+        
 
     def test_find_closest_point_on_trajectory(self):
         print("Testing find_closest_point_on_trajectory")
