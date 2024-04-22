@@ -50,7 +50,7 @@ class PurePursuit(Node):
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
 
 
-        self.lookahead = 0  # FILL IN #
+        self.lookahead = 0.8  # FILL IN #
         self.speed = 1  # FILL IN #
         self.wheelbase_length = 0.35 # FILL IN #
         self.points = []
@@ -109,33 +109,32 @@ class PurePursuit(Node):
             return
 
         # self.get_logger().info(self.points)
-        minDist = 0
-        # closestPoint = None
+        minDist = None
+        closestPoint = None
         closestIdx = None
 
         for i in range(len(self.points)-1):
             start, end = self.points[i], self.points[i+1]
-            dist, _ = self.lineSegToPoint2(start, end, p)
-            if dist < minDist:
+            dist, projection = self.lineSegToPoint2(start, end, p)
+            if not minDist or dist < minDist:
                 minDist = dist
-                # closestPoint = projection
+                closestPoint = projection
                 closestIdx = i
         
-        self.get_logger().info(f'ClosestIdx is {i}')
+        self.get_logger().info(f'Currently at: {str(p)}, ClosestIdx is {i} and point is {str(closestPoint)}, Distance is {minDist}')
         lookaheadPoint = self.find_lookahead(p, closestIdx)
-        if lookaheadPoint:
+        if lookaheadPoint is not None:
             self.get_logger().info(f'Lookahead: {lookaheadPoint[0]}, {lookaheadPoint[1]}')
             angle = self.find_steering_angle(p, theta, lookaheadPoint)
-            self.drive(p, theta, lookaheadPoint)
             drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.steering_angle = angle
-            drive_cmd.drive.speed = self.speed
+            drive_cmd.drive.speed = self.speed*1.0
             self.drive_pub.publish(drive_cmd)
         else:
             self.get_logger().info("could not get lookahead")
 
 
-    def drive(self, p, theta, lookaheadPoint):
+    def find_steering_angle(self, p, theta, lookaheadPoint):
         target = lookaheadPoint - p
         car_vec = np.cos(theta), np.sin(theta) # vector of car
         
@@ -149,6 +148,7 @@ class PurePursuit(Node):
 
     def find_lookahead(self, p, closestIdx):
         points_ahead = np.array(self.points[closestIdx:])
+        intersections = []
         for i in range(len(points_ahead)-1):
             start, end = points_ahead[i], points_ahead[i+1]
             V = end-start
@@ -156,13 +156,13 @@ class PurePursuit(Node):
             b = 2 * V.dot(start - p)
             c = start.dot(start) + p.dot(p) - 2 * start.dot(p) - self.lookahead**2
 
-            intersections = []
 
             # discriminant
             disc = b**2 - 4 * a * c
             if disc < 0:
                 continue
             else:
+                self.get_logger().info('found point in circle')
                 sqrt_disc = np.sqrt(disc)
                 t1 = (-b + sqrt_disc) / (2 * a)
                 t2 = (-b - sqrt_disc) / (2 * a)
@@ -174,9 +174,11 @@ class PurePursuit(Node):
                 elif 0 <= t2 <= 1:
                     t = t2
                 else:
+                    # self.get_logger().info("invalid solutions")
                     continue
                 intersections.append(start + t * V)
         if not intersections:
+            self.get_logger().info('intersections no exist')
             return None
         return intersections[-1]
 
@@ -219,7 +221,9 @@ class PurePursuit(Node):
         self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
-
+        # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
+        for p in self.points:
+            self.get_logger().info(str(p))
 
         self.initialized_traj = True
 
