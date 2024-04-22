@@ -9,33 +9,6 @@ import numpy as np
 
 from .utils import LineTrajectory
 
-# class Point():
-#     def __init__(self, x, y):
-#         self.x = x
-#         self.y = y
-    
-#     def __add__(self, y):
-#         return Point(self.x + y.x, self.y + y.y)
-    
-#     def __sub__(self, y):
-#         return Point(self.x - y.x, self.y - y.y)
-    
-#     def __truediv__(self, y):
-#         return Point(self.x/y, self.y/y)
-
-#     def __mul__(self, y):
-#         return Point(self.x * y, self.y * y)
-    
-#     def __rmul__(self, y):
-#         return Point(self.x * y, self.y * y)
-
-#     def length(self):
-#         return (self.x + self.y)**2
-
-#     def dist2(self, y):
-#         return (self.x-y.x)**2 + (self.y - y.y)**2
-
-    
 
 class PurePursuit(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
@@ -54,6 +27,7 @@ class PurePursuit(Node):
         self.speed = 1  # FILL IN #
         self.wheelbase_length = 0.35 # FILL IN #
         self.points = []
+        self.visited = []
         self.initialized_traj = False
 
         self.trajectory = LineTrajectory("/followed_trajectory")
@@ -108,31 +82,25 @@ class PurePursuit(Node):
             # self.get_logger().info("no trajectory info")
             return
 
-        # self.get_logger().info(self.points)
-        minDist = None
-        closestPoint = None
-        closestIdx = None
-
-        for i in range(len(self.points)-1):
-            start, end = self.points[i], self.points[i+1]
-            dist, projection = self.lineSegToPoint2(start, end, p)
-            if not minDist or dist < minDist:
-                minDist = dist
-                closestPoint = projection
-                closestIdx = i
+        target = None
+        for i in range(len(self.points)):
+            if not self.visited[i]:
+                if self.dist2(self.points[i], p) < self.lookahead ** 2:
+                    self.visited[i] = True
+            else:
+                target = self.points[i]
+                
+        drive_cmd = AckermannDriveStamped()
         
-        self.get_logger().info(f'Currently at: {str(p)}, ClosestIdx is {i} and point is {str(closestPoint)}, Distance is {minDist}')
-        lookaheadPoint = self.find_lookahead(p, closestIdx)
-        if lookaheadPoint is not None:
-            self.get_logger().info(f'Lookahead: {lookaheadPoint[0]}, {lookaheadPoint[1]}')
-            angle = self.find_steering_angle(p, theta, lookaheadPoint)
-            drive_cmd = AckermannDriveStamped()
+        if target is None:
+            drive_cmd.drive.speed = 0
+        else:
+            angle = self.find_steering_angle(p, theta, target)
             drive_cmd.drive.steering_angle = angle
             drive_cmd.drive.speed = self.speed*1.0
-            self.drive_pub.publish(drive_cmd)
-        else:
-            self.get_logger().info("could not get lookahead")
-
+            
+        self.drive_pub.publish(drive_cmd)
+            
 
     def find_steering_angle(self, p, theta, lookaheadPoint):
         target = lookaheadPoint - p
@@ -221,6 +189,7 @@ class PurePursuit(Node):
         self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
+        self.visited = np.array([False] * len(self.trajectory.points))
         # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
         for p in self.points:
             self.get_logger().info(str(p))
@@ -233,5 +202,3 @@ def main(args=None):
     follower = PurePursuit()
     rclpy.spin(follower)
     rclpy.shutdown()
-
-
