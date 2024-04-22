@@ -219,6 +219,9 @@ class PurePursuit(Node):
         self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
+        for p in self.points:
+            self.get_logger().info(p)
+        # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
 
 
         self.initialized_traj = True
