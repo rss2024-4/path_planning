@@ -35,7 +35,8 @@ class LoadTrajectory(Node):
         self.publish_trajectory()
 
     def publish_trajectory(self):
-        print("Publishing trajectory to:", self.pub_topic)
+        self.get_logger().info(f'Publishing trajectory to: {self.pub_topic}')
+        self.get_logger().info(f'len; {len(self.)}')
         self.traj_pub.publish(self.trajectory.toPoseArray())
 
 
