@@ -8,6 +8,7 @@ from visualization_msgs.msg import MarkerArray, Marker
 from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
 from .rrt import RRT, RRTStar
+from .astar import ASTAR
 import tf_transformations as tf
 
 
@@ -25,6 +26,9 @@ class PathPlan(Node):
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
+
+        self.method = "astar"
+        # self.method = "rrt"
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -69,6 +73,7 @@ class PathPlan(Node):
         # self.create_timer(0.05, self.timer_cb)
 
     def map_cb(self, msg):
+        self.get_logger().info("Processing Map")
         T = self.pose_to_T(msg.info.origin)
         table = np.array(msg.data)
         table = table.reshape((msg.info.height, msg.info.width))
@@ -80,21 +85,46 @@ class PathPlan(Node):
                     px[0,2] = j*msg.info.resolution
                     p = T@px
                     self.obstacles.append([p[0,2], p[1,2], 0.25])
+        # self.get_logger().info(str(min([element[0] for element in self.obstacles])))
+        # self.get_logger().info(str(max([element[0] for element in self.obstacles])))
+        # self.get_logger().info(str(min([element[1] for element in self.obstacles])))
+        # self.get_logger().info(str(max([element[1] for element in self.obstacles])))
+        # self.get_logger().info(",".join(str(element) for element in self.obstacles))
         self.get_logger().info("Map processed")
 
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
+        
 
     def goal_cb(self, msg):
+
+        self.method = "astar"
+
         goal = [msg.pose.position.x, msg.pose.position.y]
-        # rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
-        rrt = RRTStar(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
-        self.get_logger().info("Finding path")
-        traj = rrt.plan()
-        self.trajectory.points = traj
-        self.get_logger().info(f"Path found: {traj}")
-        self.traj_pub.publish(self.trajectory.toPoseArray())
-        self.trajectory.publish_viz()
+
+        if self.method == "astar":
+            self.get_logger().info("Start: (%s,%s)" % (self.start[0],self.start[1]))
+            self.get_logger().info("Goal: (%s,%s)" % (goal[0],goal[1]))
+            astar = ASTAR(self.obstacles, self.start, goal)        
+            # self.get_logger().info(",".join(str(loc)+str(astar.grid.nodes[loc].obstacle) for loc in astar.grid.nodes))
+            self.get_logger().info("Finding path")
+            traj = astar.plan(self.start, goal)
+            self.trajectory.points = traj
+            # self.get_logger().info(str(traj))
+            self.get_logger().info(f"Path found: {traj}")
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
+        
+        elif self.method == "rrt":
+            rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+            rrt = RRTStar(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+            
+            self.get_logger().info("Finding path")
+            traj = rrt.plan()
+            self.trajectory.points = traj
+            self.get_logger().info(f"Path found: {traj}")
+            self.traj_pub.publish(self.trajectory.toPoseArray())
+            self.trajectory.publish_viz()
 
     def pose_to_T(self, pose_msg):
         th = tf.euler_from_quaternion([
