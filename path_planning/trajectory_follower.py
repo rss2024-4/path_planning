@@ -113,6 +113,12 @@ class PurePursuit(Node):
         closestPoint = None
         closestIdx = None
 
+        if self.dist2(p, self.points[-1]) < 0.1:
+            drive_cmd = AckermannDriveStamped()
+            drive_cmd.drive.speed = 0.0
+            self.drive_pub.publish(drive_cmd)
+            return
+
         for i in range(len(self.points)-1):
             start, end = self.points[i], self.points[i+1]
             dist, projection = self.lineSegToPoint2(start, end, p)
@@ -150,7 +156,7 @@ class PurePursuit(Node):
         points_ahead = np.array(self.points[closestIdx:])
         intersections = []
         cur_lookahead = self.lookahead
-        while not intersections:
+        while not intersections and len(points_ahead) > 0:
             for i in range(len(points_ahead)-1):
                 start, end = points_ahead[i], points_ahead[i+1]
                 V = end-start
@@ -184,6 +190,7 @@ class PurePursuit(Node):
             else:
                 return intersections[-1]
         
+        self.get_logger().info("no more points on traj")
         # return None
         
 
