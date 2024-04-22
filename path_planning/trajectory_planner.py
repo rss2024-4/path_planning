@@ -98,7 +98,7 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
 
-        self.method = "astar"
+        # self.method = "astar"
 
         goal = [msg.pose.position.x, msg.pose.position.y]
 
@@ -117,7 +117,7 @@ class PathPlan(Node):
         
         elif self.method == "rrt":
             rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
-            rrt = RRTStar(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
+            # rrt = RRTStar(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
             
             self.get_logger().info("Finding path")
             traj = rrt.plan()

@@ -81,19 +81,22 @@ class PurePursuit(Node):
         if not self.initialized_traj:
             # self.get_logger().info("no trajectory info")
             return
+        
+        self.get_logger().info(str(self.visited))
 
         target = None
         for i in range(len(self.points)):
             if not self.visited[i]:
                 if self.dist2(self.points[i], p) < self.lookahead ** 2:
                     self.visited[i] = True
-            else:
-                target = self.points[i]
+                else:
+                    target = self.points[i]
+                    break
                 
         drive_cmd = AckermannDriveStamped()
         
         if target is None:
-            drive_cmd.drive.speed = 0
+            drive_cmd.drive.speed = 0.0
         else:
             angle = self.find_steering_angle(p, theta, target)
             drive_cmd.drive.steering_angle = angle
