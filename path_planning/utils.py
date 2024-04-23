@@ -13,6 +13,32 @@ EPSILON = 0.00000000001
 ''' These data structures can be used in the search function
 '''
 
+# class CubicHermite:
+#     def __init__(self, p0, p1, v0, v1):
+#         self.p0 = p0
+#         self.p1 = p1
+#         self.v0 = v0
+#         self.v1 = v1
+        
+#     def get(self, t):
+#         return (2 * t**3 - 3 * t**2 + 1) * self.p0 + \
+#                     (t**3 - 2 * t**2 + t) * self.v0 + \
+#                     (-2 * t**3 + 3 * t**2) * self.p1 + \
+#                     (t**3 - t**2) * self.v1
+
+# class CubicHermiteSpline:
+#     def __init__(self, points):
+#         self.points = points
+#         self.splines = []
+#         self.n = len(self.points) - 1
+#         self.gen_splines()
+        
+#     def gen_splines(self):
+#         for i in range(n-1):
+#             if n == 0:
+                
+#             elif n == 
+        
 
 class LineTrajectory:
     """ A class to wrap and work with piecewise linear trajectories. """
