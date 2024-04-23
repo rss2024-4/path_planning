@@ -4,38 +4,12 @@ from geometry_msgs.msg import PoseArray
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
+from geometry_msgs.msg import Point
+from visualization_msgs.msg import Marker
 
 import numpy as np
 
 from .utils import LineTrajectory
-
-# class Point():
-#     def __init__(self, x, y):
-#         self.x = x
-#         self.y = y
-    
-#     def __add__(self, y):
-#         return Point(self.x + y.x, self.y + y.y)
-    
-#     def __sub__(self, y):
-#         return Point(self.x - y.x, self.y - y.y)
-    
-#     def __truediv__(self, y):
-#         return Point(self.x/y, self.y/y)
-
-#     def __mul__(self, y):
-#         return Point(self.x * y, self.y * y)
-    
-#     def __rmul__(self, y):
-#         return Point(self.x * y, self.y * y)
-
-#     def length(self):
-#         return (self.x + self.y)**2
-
-#     def dist2(self, y):
-#         return (self.x-y.x)**2 + (self.y - y.y)**2
-
-    
 
 class PurePursuit(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
@@ -69,6 +43,7 @@ class PurePursuit(Node):
                                                  self.odom_topic,
                                                  self.odom_callback,
                                                  1)
+        self.point_pub = self.create_publisher(Marker, "lookahead", 1)
         
         # self.test_find_closest_point_on_trajectory()
 
@@ -77,7 +52,7 @@ class PurePursuit(Node):
     
     def find_closest_point(self, p): # p is current position
         minDist = None
-        closestPoint = None
+        # closestPoint = None
         closestIdx = None
 
         for i in range(len(self.points)-1):
@@ -86,7 +61,7 @@ class PurePursuit(Node):
             print('dist', i, dist)
             if not minDist or dist < minDist:
                 minDist = dist
-                closestPoint = projection
+                # closestPoint = projection
                 closestIdx = i
             
         return minDist, closestIdx
@@ -151,6 +126,28 @@ class PurePursuit(Node):
         sign = np.sign(np.cross(car_vec, target))
         return delta*sign
         
+    def publish_point(self, p):
+        # Construct a line
+        msg = Marker()
+        msg.type = Marker.POINTS
+        msg.header.frame_id = "map"
+
+        # Set the size and color
+        msg.scale.x = 0.1
+        msg.scale.y = 0.1
+        msg.color.a = 1.
+        msg.color.r = 0.0
+        msg.color.g = 0.0
+        msg.color.g = 1.0
+
+        # Fill the line with the desired values
+        pt = Point()
+        pt.x = p[0]
+        pt.y = p[1]
+        msg.points.append(pt)
+
+        # Publish the line
+        self.point_pub.publish(msg)
 
     def find_lookahead(self, p, closestIdx):
         points_ahead = np.array(self.points[closestIdx:])
@@ -188,6 +185,7 @@ class PurePursuit(Node):
                 cur_lookahead += 0.3
                 self.get_logger().info(f'intersections no exist, increasing lookahead to {cur_lookahead}')
             else:
+                self.publish_point(intersections[-1])
                 return intersections[-1]
         
         self.get_logger().info("no more points on traj")
