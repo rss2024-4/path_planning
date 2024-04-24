@@ -29,8 +29,8 @@ class ASTAR:
             self.width_max = 26.25
             self.height_min = -4.25
             self.height_max = 39.25
-            width_range = np.linspace(self.width_min, self.width_max, (self.width_max - self.width_min)/cell_size + 1)
-            height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/cell_size + 1)
+            width_range = np.linspace(self.width_min, self.width_max, int((self.width_max - self.width_min)//cell_size + 1))
+            height_range = np.linspace(self.height_min, self.height_max, int((self.height_max - self.height_min)//cell_size + 1))
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
 
@@ -51,8 +51,8 @@ class ASTAR:
                 x_max_rounded = math.ceil(x_max * cells_per_meter) / cells_per_meter
                 y_min_rounded = math.floor(y_min * cells_per_meter) / cells_per_meter
                 y_max_rounded = math.ceil(y_max * cells_per_meter) / cells_per_meter
-                x_locs = np.linspace(x_min_rounded, x_max_rounded, (x_max_rounded - x_min_rounded)*self.cell_size + 1)
-                y_locs = np.linspace(y_min_rounded, y_max_rounded, (y_max_rounded - y_min_rounded)*self.cell_size + 1)
+                x_locs = np.linspace(x_min_rounded, x_max_rounded, int((x_max_rounded - x_min_rounded)*self.cell_size + 1))
+                y_locs = np.linspace(y_min_rounded, y_max_rounded, int((y_max_rounded - y_min_rounded)*self.cell_size + 1))
 
                 for x in x_locs:
                     for y in y_locs:

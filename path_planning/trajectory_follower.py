@@ -21,7 +21,8 @@ class PurePursuit(Node):
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-
+        self.drive_topic = "/vesc/low_level/input/navigation"
+        self.get_logger().info(f'{self.drive_topic}')
 
         self.lookahead = 0.8  # FILL IN #
         self.speed = 1  # FILL IN #
@@ -57,7 +58,7 @@ class PurePursuit(Node):
         for i in range(len(self.points)-1):
             start, end = self.points[i], self.points[i+1]
             dist, projection = self.lineSegToPoint2(start, end, p)
-            print('dist', i, dist)
+            # print('dist', i, dist)
             if not minDist or dist < minDist:
                 minDist = dist
                 closestPoint = projection
@@ -82,7 +83,7 @@ class PurePursuit(Node):
             # self.get_logger().info("no trajectory info")
             return
         
-        self.get_logger().info(str(self.visited))
+        # self.get_logger().info(str(self.visited))
 
         target = None
         for i in range(len(self.points)):
@@ -194,8 +195,8 @@ class PurePursuit(Node):
         self.points = np.array(self.trajectory.points)
         self.visited = np.array([False] * len(self.trajectory.points))
         # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
-        for p in self.points:
-            self.get_logger().info(str(p))
+        #for p in self.points:
+        #    self.get_logger().info(str(p))
 
         self.initialized_traj = True
 
