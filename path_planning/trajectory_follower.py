@@ -1,19 +1,18 @@
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseArray, PointStamped
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
 
 import numpy as np
 
-from .utils import LineTrajectory
-
+from .utils import LineTrajectory, CubicHermiteGroup
 
 class PurePursuit(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
     """
-    END_DIST = 0.05
+    END_DIST = 0.25
 
     def __init__(self):
         super().__init__("trajectory_follower")
@@ -24,11 +23,11 @@ class PurePursuit(Node):
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
 
 
-        self.lookahead = 0.8  # FILL IN #
+        self.lookahead = 1.5  # FILL IN #
         self.speed = 1  # FILL IN #
-        self.wheelbase_length = 0.35 # FILL IN #
+        self.wheelbase_length = 0.325 # FILL IN #
         self.points = []
-        self.visited = []
+        self.spline = None
         self.initialized_traj = False
 
         self.trajectory = LineTrajectory("/followed_trajectory")
@@ -40,6 +39,8 @@ class PurePursuit(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
                                                self.drive_topic,
                                                1)
+        self.lookahead_pub = self.create_publisher(PointStamped, 'lookahead', 10)
+        self.closest_pub = self.create_publisher(PointStamped, 'closest', 10)
         self.odom_sub = self.create_subscription(Odometry,
                                                  self.odom_topic,
                                                  self.odom_callback,
@@ -66,24 +67,32 @@ class PurePursuit(Node):
             # self.get_logger().info("no trajectory info")
             return
         
-        self.get_logger().info(str(self.visited))
-
-        target = None
+        t = self.spline.getClosestPointT(p)
+        closest = self.spline.get(t)
+        target = self.spline.getLookaheadPointFromT(t, p, self.lookahead)
         
-        for i in range(len(self.points)):
-            if not self.visited[i]:
-                if self.dist2(self.points[i], p) < self.lookahead ** 2:
-                    self.visited[i] = True
-                else:
-                    target = self.points[i]
-                    break
-                
-        if all(self.visited[i]) and self.dist2(self.points[-1], p) > self.END_DIST:
-            target = self.points[-1]
+        point = PointStamped()
+        point.header.stamp = self.get_clock().now().to_msg()
+        point.header.frame_id = 'map'
+        point.point.x = target[0]
+        point.point.y = target[1]
+        point.point.z = 0.0
+        
+        point2 = PointStamped()
+        point2.header.stamp = self.get_clock().now().to_msg()
+        point2.header.frame_id = 'map'
+        point2.point.x = closest[0]
+        point2.point.y = closest[1]
+        point2.point.z = 0.0
+        
+        self.lookahead_pub.publish(point)
+        self.closest_pub.publish(point2)
+        
+        # self.get_logger().info(str(p) + " -> " + str(closest) + " -> " + str(target))
                 
         drive_cmd = AckermannDriveStamped()
         
-        if target is None:
+        if t >= 1 or np.linalg.norm(p - self.spline.get(1)) < self.END_DIST:
             drive_cmd.drive.speed = 0.0
         else:
             angle = self.find_steering_angle(p, theta, target)
@@ -117,9 +126,31 @@ class PurePursuit(Node):
         self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
-        self.visited = np.array([False] * len(self.trajectory.points))
-        # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
-        for p in self.points:
+        # startAngle = euler_from_quaternion([
+        #     msg.poses[0].orientation.x,
+        #     msg.poses[0].orientation.y,
+        #     msg.poses[0].orientation.z,
+        #     msg.poses[0].orientation.w
+        # ])[2]
+        
+        # endAngle = euler_from_quaternion([
+        #     msg.poses[-1].orientation.x,
+        #     msg.poses[-1].orientation.y,
+        #     msg.poses[-1].orientation.z,
+        #     msg.poses[-1].orientation.w
+        # ])[2]
+        startAngle = 0
+        endAngle = 0
+        
+        self.pp = []
+        self.pp.append(self.points[0])
+        for i in range(1, len(self.points)-5):
+            if i % 5 == 0:
+                self.pp.append(self.points[i])
+        self.pp.append(self.points[-1])  
+        self.spline = CubicHermiteGroup(self.pp, startAngle, endAngle)
+        
+        for p in self.pp:
             self.get_logger().info(str(p))
 
         self.initialized_traj = True
