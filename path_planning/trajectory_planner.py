@@ -77,6 +77,7 @@ class PathPlan(Node):
         T = self.pose_to_T(msg.info.origin)
         table = np.array(msg.data)
         table = table.reshape((msg.info.height, msg.info.width))
+        # if self.method == "rrt":
         for i, row in enumerate(table):
             for j, val in enumerate(row):
                 if val > 85:
@@ -85,6 +86,8 @@ class PathPlan(Node):
                     px[0,2] = j*msg.info.resolution
                     p = T@px
                     self.obstacles.append([p[0,2], p[1,2], 0.25])
+        # elif self.method == "astar":
+
         # self.get_logger().info(str(min([element[0] for element in self.obstacles])))
         # self.get_logger().info(str(max([element[0] for element in self.obstacles])))
         # self.get_logger().info(str(min([element[1] for element in self.obstacles])))
@@ -98,8 +101,11 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
 
+<<<<<<< Updated upstream
         # self.method = "astar"
 
+=======
+>>>>>>> Stashed changes
         goal = [msg.pose.position.x, msg.pose.position.y]
 
         if self.method == "astar":
@@ -109,9 +115,13 @@ class PathPlan(Node):
             # self.get_logger().info(",".join(str(loc)+str(astar.grid.nodes[loc].obstacle) for loc in astar.grid.nodes))
             self.get_logger().info("Finding path")
             traj = astar.plan(self.start, goal)
+            if not traj:
+                self.get_logger().info("No Path Found.")
+                return
             self.trajectory.points = traj
             # self.get_logger().info(str(traj))
             self.get_logger().info(f"Path found: {traj}")
+            
             self.traj_pub.publish(self.trajectory.toPoseArray())
             self.trajectory.publish_viz()
         
@@ -121,6 +131,9 @@ class PathPlan(Node):
             
             self.get_logger().info("Finding path")
             traj = rrt.plan()
+            if not traj:
+                self.get_logger().info("No Path Found.")
+                return
             self.trajectory.points = traj
             self.get_logger().info(f"Path found: {traj}")
             self.traj_pub.publish(self.trajectory.toPoseArray())

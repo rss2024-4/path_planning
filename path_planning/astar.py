@@ -25,12 +25,21 @@ class ASTAR:
     class Grid:
         def __init__(self, obstacles, cell_size=1):
             self.cell_size = cell_size
+<<<<<<< Updated upstream
             self.width_min = -61.5
             self.width_max = 26.25
             self.height_min = -4.25
             self.height_max = 39.25
             width_range = np.linspace(self.width_min, self.width_max, int((self.width_max - self.width_min)//cell_size + 1))
             height_range = np.linspace(self.height_min, self.height_max, int((self.height_max - self.height_min)//cell_size + 1))
+=======
+            self.width_min = -62.0
+            self.width_max = 27.0
+            self.height_min = -5.0
+            self.height_max = 40.0
+            width_range = np.linspace(self.width_min, self.width_max, (self.width_max - self.width_min)/cell_size + 1)
+            height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/cell_size + 1)
+>>>>>>> Stashed changes
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
 
@@ -39,7 +48,7 @@ class ASTAR:
                 x = obstacle[0]
                 y = obstacle[1]
                 # rad = obstacle[2]
-                rad = .4
+                rad = .25
                 x_range = (x-rad, x+rad)
                 y_range = (y-rad, y+rad)
                 x_min = x-rad
@@ -47,12 +56,21 @@ class ASTAR:
                 y_min = y-rad
                 y_max = y+rad
                 cells_per_meter = 1/self.cell_size
+<<<<<<< Updated upstream
                 x_min_rounded = math.floor(x_min * cells_per_meter) / cells_per_meter
                 x_max_rounded = math.ceil(x_max * cells_per_meter) / cells_per_meter
                 y_min_rounded = math.floor(y_min * cells_per_meter) / cells_per_meter
                 y_max_rounded = math.ceil(y_max * cells_per_meter) / cells_per_meter
                 x_locs = np.linspace(x_min_rounded, x_max_rounded, int((x_max_rounded - x_min_rounded)*self.cell_size + 1))
                 y_locs = np.linspace(y_min_rounded, y_max_rounded, int((y_max_rounded - y_min_rounded)*self.cell_size + 1))
+=======
+                x_min_rounded = round(x_min * cells_per_meter) / cells_per_meter
+                x_max_rounded = round(x_max * cells_per_meter) / cells_per_meter
+                y_min_rounded = round(y_min * cells_per_meter) / cells_per_meter
+                y_max_rounded = round(y_max * cells_per_meter) / cells_per_meter
+                x_locs = np.linspace(x_min_rounded, x_max_rounded, (x_max_rounded - x_min_rounded)*cells_per_meter + 1)
+                y_locs = np.linspace(y_min_rounded, y_max_rounded, (y_max_rounded - y_min_rounded)*cells_per_meter + 1)
+>>>>>>> Stashed changes
 
                 for x in x_locs:
                     for y in y_locs:
