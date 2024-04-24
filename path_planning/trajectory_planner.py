@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
+import yaml
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose
@@ -27,8 +28,8 @@ class PathPlan(Node):
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
 
-        self.method = "astar"
-        # self.method = "rrt"
+        # self.method = "astar"
+        self.method = "rrt"
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -58,7 +59,7 @@ class PathPlan(Node):
         )
 
         self.obstacles_pub = self.create_publisher(
-            PoseArray,
+            MarkerArray,
             "/obstacles",
             10
         )
@@ -69,8 +70,9 @@ class PathPlan(Node):
         self.y_bounds = (-16, 48) # in meters
         self.obstacles = [] #x,y,radius (in meters)
         self.start = None
+        self.obstacle_radius = .25
 
-        # self.create_timer(0.05, self.timer_cb)
+        self.create_timer(0.05, self.timer_cb)
 
     def map_cb(self, msg):
         self.get_logger().info("Processing Map")
@@ -84,22 +86,29 @@ class PathPlan(Node):
                     px[1,2] = i*msg.info.resolution
                     px[0,2] = j*msg.info.resolution
                     p = T@px
-                    self.obstacles.append([p[0,2], p[1,2], 0.25])
-        # self.get_logger().info(str(min([element[0] for element in self.obstacles])))
-        # self.get_logger().info(str(max([element[0] for element in self.obstacles])))
-        # self.get_logger().info(str(min([element[1] for element in self.obstacles])))
-        # self.get_logger().info(str(max([element[1] for element in self.obstacles])))
-        # self.get_logger().info(",".join(str(element) for element in self.obstacles))
+                    x, y = p[0,2], p[1,2]
+                    self.obstacles.append([float(x), float(y), self.obstacle_radius])
+                    # if len(self.obstacles) == 0:
+                    #     self.obstacles.append([float(x), float(y), self.obstacle_radius])
+                    # else:
+                    #     for i in range(len(self.obstacles)):
+                    #         if not self.collision(x, y, self.obstacles[i]):
+                    #             self.obstacles.append([float(x), float(y), self.obstacle_radius])
+                    #             break
+        with open("src/path_planning/maps/obstacles.yaml", 'w') as file:
+            yaml.dump(self.obstacles, file, default_flow_style=False)
         self.get_logger().info("Map processed")
+
+    def collision(self, x, y, obs):
+        if np.sqrt((x-obs[0])**2 + (y-obs[1])**2) <= 2*self.obstacle_radius:
+            return True
+        return False
 
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
         
 
     def goal_cb(self, msg):
-
-        # self.method = "astar"
-
         goal = [msg.pose.position.x, msg.pose.position.y]
 
         if self.method == "astar":
@@ -154,11 +163,35 @@ class PathPlan(Node):
             a.append(pose)
         msg.poses = a
         return msg
+    
+    def arr_to_marker_arr(self, arr):
+        msg = MarkerArray()
+        a = []
+        for i, obs in enumerate(arr):
+            marker = Marker()
+            marker.type = 3
+            marker.id = i
+            marker.header.frame_id = "map"
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.pose.position.x = obs[0]
+            marker.pose.position.y = obs[1]
+            marker.pose.position.z = 0.0
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = obs[2]
+            marker.scale.y = obs[2]
+            marker.scale.z = obs[2]
+            marker.color.a = 1.
+            marker.color.r = 255.
+            marker.color.g = 0.
+            marker.color.b = 0.
+            a.append(marker)
+        msg.markers = a
+        return msg
 
     def timer_cb(self):
         if len(self.obstacles) == 0:
             return
-        self.obstacles_pub.publish(self.arr_to_pose_arr(self.obstacles))
+        self.obstacles_pub.publish(self.arr_to_marker_arr(self.obstacles))
 
 
 def main(args=None):
