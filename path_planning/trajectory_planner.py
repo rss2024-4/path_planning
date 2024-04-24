@@ -101,11 +101,8 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
 
-<<<<<<< Updated upstream
         # self.method = "astar"
 
-=======
->>>>>>> Stashed changes
         goal = [msg.pose.position.x, msg.pose.position.y]
 
         if self.method == "astar":
