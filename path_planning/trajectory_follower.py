@@ -100,8 +100,11 @@ class PurePursuit(Node):
             drive_cmd.drive.speed = 0.0
         else:
             angle = self.find_steering_angle(p, theta, target)
+            if np.abs(angle) < 0.05:
+                drive_cmd.drive.speed = 2.0
+            else:
+                drive_cmd.drive.speed = self.speed*1.0
             drive_cmd.drive.steering_angle = angle
-            drive_cmd.drive.speed = self.speed*1.0
             
         self.drive_pub.publish(drive_cmd)
             
