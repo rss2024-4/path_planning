@@ -101,7 +101,7 @@ class PathPlan(Node):
 
     def goal_cb(self, msg):
 
-        # self.method = "astar"
+        self.method = "astar"
 
         goal = [msg.pose.position.x, msg.pose.position.y]
 

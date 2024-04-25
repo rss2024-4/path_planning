@@ -5,7 +5,7 @@ import math
 class ASTAR:
 
     def __init__(self, obstacles, start, goal):
-        self.grid = self.Grid(obstacles, .25)
+        self.grid = self.Grid(obstacles, .125)
         self.start = start
         self.goal = goal
         print(self.grid)
@@ -29,8 +29,8 @@ class ASTAR:
             self.width_max = 27.0
             self.height_min = -5.0
             self.height_max = 40.0
-            width_range = np.linspace(self.width_min, self.width_max, int((self.width_max - self.width_min)/cell_size + 1))
-            height_range = np.linspace(self.height_min, self.height_max, int((self.height_max - self.height_min)/cell_size + 1))
+            width_range = np.linspace(self.width_min, self.width_max, (self.width_max - self.width_min)/self.cell_size + 1)
+            height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/self.cell_size + 1)
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
 
@@ -39,7 +39,7 @@ class ASTAR:
                 x = obstacle[0]
                 y = obstacle[1]
                 # rad = obstacle[2]
-                rad = .25
+                rad = .37
                 x_range = (x-rad, x+rad)
                 y_range = (y-rad, y+rad)
                 x_min = x-rad
@@ -107,6 +107,20 @@ class ASTAR:
                 grid_y = grid_loc[1]
                 if x > grid_x - half_cell and x < grid_x + half_cell and y > grid_y - half_cell and y < grid_y + half_cell:
                     return self.nodes[grid_loc]
+                
+        def obstacles_along_path(self, pt1, pt2):
+            cells_per_meter = 1/self.cell_size
+            dis = math.floor(math.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2))
+            x_locs = np.linspace(pt1[0], pt2[0], 20*dis)
+            y_locs = np.linspace(pt1[1], pt2[1], 20*dis)
+            for i in range(20*dis):
+                x_rounded = round(x_locs[i] * cells_per_meter) / cells_per_meter
+                y_rounded = round(y_locs[i] * cells_per_meter) / cells_per_meter
+                loc = (x_rounded, y_rounded)
+                if self.nodes[loc].obstacle == True:
+                    return True
+            return False
+
 
     def heuristic(self, node, goal):
         return math.sqrt((node.x - goal.x)**2 + (node.y - goal.y)**2)
@@ -117,6 +131,32 @@ class ASTAR:
             path.append((current.x, current.y))
             current = current.parent
         return path[::-1]
+
+    
+    def optimize_path(self, path):
+        new_path = []
+        i = 0;
+        while True:
+            pt1 = path[i]
+            new_path.append(pt1)
+            if i == len(path)-1:
+                return new_path
+            shortcut_node = None
+            shortcut_j = None
+            j = i+1
+            while True:
+                pt2 = path[j]
+                shortcut = not self.grid.obstacles_along_path(pt1, pt2)
+                if shortcut:
+                    shortcut_node = pt2
+                    shortcut_j = j
+                j += 1
+                if j >= len(path):
+                    break
+            if shortcut_node:
+                i = shortcut_j
+            else:
+                i += 1
     
 
     def plan(self, start_loc, goal_loc):
@@ -134,7 +174,8 @@ class ASTAR:
             current = heapq.heappop(open_set)
 
             if current == goal:
-                return self.reconstruct_path(current)
+                path = self.reconstruct_path(current)
+                return self.optimize_path(path)
 
             closed_set.add(current)
 
