@@ -167,11 +167,13 @@ class CubicHermiteGroup:
             p0 = self.points[i]
             p1 = self.points[i+1]
             if i == 0:
-                v0 = self.angleToVec(self.angles[0])
+                # v0 = self.angleToVec(self.angles[0])
+                v0 = self.points[i+1] - self.points[i]
                 v1 = self.points[i+2] - self.points[i]
             elif i == self.n-2:
                 v0 = self.points[i+1] - self.points[i-1]
-                v1 = self.angleToVec(self.angles[1])
+                # v1 = self.angleToVec(self.angles[1])
+                v1 = self.points[i+1] - self.points[i]
             else:
                 v0 = self.points[i+1] - self.points[i-1]
                 v1 = self.points[i+2] - self.points[i]
@@ -250,7 +252,7 @@ class CubicHermiteGroup:
             
 s = CubicHermiteGroup(np.array([[0, 0], [1, 1], [2, 0], [3, 2]]), 0, 0)
 
-print(s.getLookaheadPoint(np.array([1, 1]), 1))
+# print(s.getLookaheadPoint(np.array([1, 1]), 1))
 # for i in range(10 + 1):
 #     print(i/10, s.getIndexFromT(i / 10), s.getSubTFromT(i / 10))
 
@@ -263,8 +265,13 @@ print(s.getLookaheadPoint(np.array([1, 1]), 1))
     
 # print("[" + ", ".join(st) + "]")
 
-# t = s.getClosestPointT(np.array([0.5, 1]))
-# p = s.get(t)
+p = s.get(0.5)
+
+print(p)
+
+for i in [0.25, 0.5, 0.75, 1]:
+    print(s.getLookaheadPoint(p, i))
+
 
 # print(p, s.getLookaheadPoint(np.array([0.5, 1]), 0.2))
 # print(s.spline_l)

@@ -24,13 +24,13 @@ class PurePursuit(Node):
 
 
         self.lookahead = 1.5  # FILL IN #
-        self.speed = 1  # FILL IN #
+        self.speed = 1.5  # FILL IN #
         self.wheelbase_length = 0.325 # FILL IN #
         self.points = []
         self.spline = None
         self.initialized_traj = False
 
-        self.trajectory = LineTrajectory("/followed_trajectory")
+        self.trajectory = LineTrajectory(node=self, viz_namespace="/followed_trajectory")
 
         self.traj_sub = self.create_subscription(PoseArray,
                                                  "/trajectory/current",
@@ -69,7 +69,13 @@ class PurePursuit(Node):
         
         t = self.spline.getClosestPointT(p)
         closest = self.spline.get(t)
-        target = self.spline.getLookaheadPointFromT(t, p, self.lookahead)
+        lookahead = self.lookahead - np.linalg.norm(closest - p)
+        if lookahead <= 0:
+            target = self.spline.get(t)
+        else:
+            target = self.spline.getLookaheadPointFromT(t, p, lookahead)
+            
+        # target = self.spline.getLookaheadPointFromT(t, p, self.lookahead)
         
         point = PointStamped()
         point.header.stamp = self.get_clock().now().to_msg()
@@ -123,7 +129,7 @@ class PurePursuit(Node):
 
         self.trajectory.clear()
         self.trajectory.fromPoseArray(msg)
-        self.trajectory.publish_viz()
+        # self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
         # startAngle = euler_from_quaternion([
@@ -144,11 +150,19 @@ class PurePursuit(Node):
         
         self.pp = []
         self.pp.append(self.points[0])
-        for i in range(1, len(self.points)-5):
-            if i % 5 == 0:
+        INTERP = 3
+        for i in range(1, len(self.points)-INTERP):
+            if i % INTERP == 0:
                 self.pp.append(self.points[i])
         self.pp.append(self.points[-1])  
         self.spline = CubicHermiteGroup(self.pp, startAngle, endAngle)
+        
+        ps = []
+        for i in range(101):
+            ps.append(self.spline.get(float(i) / 100.0))
+        self.trajectory.clear()
+        self.trajectory.fromPointArray(ps)
+        self.trajectory.publish_viz()
         
         for p in self.pp:
             self.get_logger().info(str(p))

@@ -28,8 +28,8 @@ class PathPlan(Node):
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
 
-        # self.method = "astar"
-        self.method = "rrt"
+        self.method = "astar"
+        # self.method = "rrt"
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -122,7 +122,7 @@ class PathPlan(Node):
             # self.get_logger().info(str(traj))
             self.get_logger().info(f"Path found: {traj}")
             self.traj_pub.publish(self.trajectory.toPoseArray())
-            self.trajectory.publish_viz()
+            # self.trajectory.publish_viz()
         
         elif self.method == "rrt":
             rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
