@@ -4,14 +4,15 @@ from geometry_msgs.msg import PoseArray
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
+from geometry_msgs.msg import Point
+from visualization_msgs.msg import Marker
 
 import numpy as np
 import time
 
 from .utils import LineTrajectory
 
-
-class PurePursuit(Node):
+class PurePursuitNat(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
     """
 
@@ -22,14 +23,12 @@ class PurePursuit(Node):
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-        # self.drive_topic = "/vesc/low_level/input/navigation"
-        self.get_logger().info(f'{self.drive_topic}')
+
 
         self.lookahead = 0.8  # FILL IN #
         self.speed = 1  # FILL IN #
         self.wheelbase_length = 0.35 # FILL IN #
         self.points = []
-        self.visited = []
         self.initialized_traj = False
 
         self.trajectory = LineTrajectory("/followed_trajectory")
@@ -39,38 +38,35 @@ class PurePursuit(Node):
                                                  self.trajectory_callback,
                                                  1)
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                               self.drive_topic,
+                                            #    self.drive_topic,
+                                                "/drive",
                                                1)
         self.odom_sub = self.create_subscription(Odometry,
-                                                 self.odom_topic,
+                                                #  self.odom_topic,
+                                                 "/odom",
                                                  self.odom_callback,
                                                  1)
+        self.point_pub = self.create_publisher(Marker, "lookahead", 1)
         
         # self.test_find_closest_point_on_trajectory()
         self.start_time = None
-        self.end_time = None
-
-
-        # for testing
-        # self.initialized_traj = True
-        # self.points = [(-9.25, 26.0), (-9.0, 25.75), (-8.75, 25.75), (-8.5, 25.5), (-8.25, 25.25), (-8.0, 25.25), (-7.75, 25.25), (-7.5, 25.25), (-7.25, 25.25), (-7.25, 25.0), (-7.25, 24.75), (-7.0, 24.5), (-7.0, 24.25), (-7.0, 24.0), (-7.0, 23.75), (-7.0, 23.5), (-7.0, 23.25), (-7.0, 23.0), (-6.75, 22.75), (-6.5, 22.5), (-6.5, 22.25), (-6.5, 22.0), (-6.5, 21.75), (-6.5, 21.5), (-6.5, 21.25), (-6.75, 21.0), (-7.0, 20.75), (-7.25, 20.5), (-7.5, 20.25), (-7.75, 20.0), (-8.0, 19.75), (-8.25, 19.5), (-8.5, 19.25), (-8.75, 19.0), (-9.0, 18.75), (-9.25, 18.5), (-9.5, 18.25), (-9.75, 18.0), (-10.0, 17.75), (-10.25, 17.5), (-10.5, 17.25), (-10.75, 17.0), (-11.0, 16.75), (-11.25, 16.5), (-11.5, 16.25), (-11.75, 16.0), (-12.0, 15.75), (-12.25, 15.5), (-12.5, 15.25), (-12.75, 15.0), (-13.0, 14.75), (-13.25, 14.5), (-13.5, 14.25), (-13.75, 14.0), (-14.0, 13.75), (-14.25, 13.5), (-14.5, 13.25), (-14.75, 13.0), (-15.0, 12.75), (-15.0, 12.5), (-15.25, 12.25), (-15.5, 12.0), (-15.75, 11.75), (-16.0, 11.5), (-16.0, 11.25), (-16.0, 11.0), (-16.0, 10.75), (-16.0, 10.5), (-16.0, 10.25), (-16.0, 10.0), (-16.0, 9.75), (-16.25, 9.75), (-16.25, 9.5), (-16.5, 9.5), (-16.75, 9.25), (-17.0, 9.0), (-17.25, 8.75), (-17.5, 8.5), (-17.75, 8.25), (-18.0, 8.0), (-18.25, 7.75), (-18.5, 7.5), (-18.75, 7.25), (-19.0, 7.0), (-19.25, 6.75), (-19.5, 6.5), (-19.75, 6.25), (-20.0, 6.0), (-20.25, 5.75), (-20.25, 5.5), (-20.25, 5.25), (-20.5, 5.0), (-20.5, 4.75), (-20.5, 4.5), (-20.5, 4.25), (-20.75, 4.0), (-20.75, 3.75), (-21.0, 3.5), (-21.0, 3.25), (-21.25, 3.0), (-21.25, 2.75), (-21.25, 2.5), (-21.5, 2.25), (-21.5, 2.0), (-21.75, 1.75), (-21.75, 1.5), (-21.75, 1.25), (-22.0, 1.0), (-22.0, 0.75), (-22.25, 0.5), (-22.5, 0.5), (-22.75, 0.5), (-23.0, 0.25), (-23.25, 0.0), (-23.5, 0.0), (-23.75, -0.25), (-24.0, -0.25)]
-        # self.visited = np.array([False] * len(self.points))
+        self.ended = None
 
     def dist2(self, p1, p2):
         return (p1[0]-p2[0])**2 + (p1[1] - p2[1])**2
     
     def find_closest_point(self, p): # p is current position
         minDist = None
-        closestPoint = None
+        # closestPoint = None
         closestIdx = None
 
         for i in range(len(self.points)-1):
             start, end = self.points[i], self.points[i+1]
             dist, projection = self.lineSegToPoint2(start, end, p)
-            # print('dist', i, dist)
+            print('dist', i, dist)
             if not minDist or dist < minDist:
                 minDist = dist
-                closestPoint = projection
+                # closestPoint = projection
                 closestIdx = i
             
         return minDist, closestIdx
@@ -91,41 +87,51 @@ class PurePursuit(Node):
         if not self.initialized_traj:
             # self.get_logger().info("no trajectory info")
             return
-        
-        # self.get_logger().info(str(self.visited))
 
-        target = None
-        for i in range(len(self.points)):
-            if not self.visited[i]:
-                if self.dist2(self.points[i], p) < self.lookahead ** 2:
-                    self.visited[i] = True
-                else:
-                    target = self.points[i]
-                    break
-                
-        drive_cmd = AckermannDriveStamped()
-        
-        if target is None:
+        # self.get_logger().info(self.points)
+        minDist = None
+        closestPoint = None
+        closestIdx = None
+
+        # self.get_logger().info(f'dist to final: {self.dist2(p, self.points[-1])}')
+        if self.dist2(p, self.points[-1]) < 0.7:
+            drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.speed = 0.0
-            if not self.end_time:
-                self.end_time = time.time()
+            self.drive_pub.publish(drive_cmd)
+
+            if not self.ended:
+                self.ended = True
                 elapsed = time.time() - self.start_time
                 self.get_logger().info(f'Elapsed: {elapsed}')
-                self.start_time = None
-        else:
-            angle = self.find_steering_angle(p, theta, target)
-            if np.abs(angle) < 0.05:
-                drive_cmd.drive.speed = 2.0
+            return
+
+        for i in range(len(self.points)-1):
+            start, end = self.points[i], self.points[i+1]
+            dist, projection = self.lineSegToPoint2(start, end, p)
+            if not minDist or dist < minDist:
+                minDist = dist
+                closestPoint = projection
+                closestIdx = i
+        
+        # self.get_logger().info(f'Currently at: {str(p)}, ClosestIdx is {i} and point is {str(closestPoint)}, Distance is {minDist}')
+        lookaheadPoint = self.find_lookahead(p, closestIdx)
+        if lookaheadPoint is not None:
+            # self.get_logger().info(f'Lookahead: {lookaheadPoint[0]}, {lookaheadPoint[1]}')
+            angle = self.find_steering_angle(p, theta, lookaheadPoint)
+            if np.abs(angle) < 0.5:
+                speed = 2.0
             else:
-                drive_cmd.drive.speed = self.speed*1.0
+                speed = self.speed * 1.0
+            drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.steering_angle = angle
+            drive_cmd.drive.speed = speed
+            self.drive_pub.publish(drive_cmd)
 
             if not self.start_time:
-                self.get_logger().info("started")
                 self.start_time = time.time()
-            
-        self.drive_pub.publish(drive_cmd)
-            
+        else:
+            self.get_logger().info("could not get lookahead")
+
 
     def find_steering_angle(self, p, theta, lookaheadPoint):
         target = lookaheadPoint - p
@@ -138,42 +144,71 @@ class PurePursuit(Node):
         sign = np.sign(np.cross(car_vec, target))
         return delta*sign
         
+    def publish_point(self, p):
+        # Construct a line
+        msg = Marker()
+        msg.type = Marker.POINTS
+        msg.header.frame_id = "map"
+
+        # Set the size and color
+        msg.scale.x = 0.1
+        msg.scale.y = 0.1
+        msg.color.a = 1.
+        msg.color.r = 0.0
+        msg.color.g = 0.0
+        msg.color.g = 1.0
+
+        # Fill the line with the desired values
+        pt = Point()
+        pt.x = p[0]
+        pt.y = p[1]
+        msg.points.append(pt)
+
+        # Publish the line
+        self.point_pub.publish(msg)
 
     def find_lookahead(self, p, closestIdx):
         points_ahead = np.array(self.points[closestIdx:])
         intersections = []
-        for i in range(len(points_ahead)-1):
-            start, end = points_ahead[i], points_ahead[i+1]
-            V = end-start
-            a = V.dot(V)
-            b = 2 * V.dot(start - p)
-            c = start.dot(start) + p.dot(p) - 2 * start.dot(p) - self.lookahead**2
+        cur_lookahead = self.lookahead
+        while not intersections and len(points_ahead) > 0:
+            for i in range(len(points_ahead)-1):
+                start, end = points_ahead[i], points_ahead[i+1]
+                V = end-start
+                a = V.dot(V)
+                b = 2 * V.dot(start - p)
+                c = start.dot(start) + p.dot(p) - 2 * start.dot(p) - cur_lookahead**2
 
-
-            # discriminant
-            disc = b**2 - 4 * a * c
-            if disc < 0:
-                continue
-            else:
-                self.get_logger().info('found point in circle')
-                sqrt_disc = np.sqrt(disc)
-                t1 = (-b + sqrt_disc) / (2 * a)
-                t2 = (-b - sqrt_disc) / (2 * a)
-
-                if 0 <= t1 <= 1 and 0 <= t2 <= 1:   # both valid
-                    t = max(t1, t2)
-                elif 0 <= t1 <= 1:
-                    t = t1
-                elif 0 <= t2 <= 1:
-                    t = t2
-                else:
-                    # self.get_logger().info("invalid solutions")
+                # discriminant
+                disc = b**2 - 4 * a * c
+                if disc < 0:
                     continue
-                intersections.append(start + t * V)
-        if not intersections:
-            self.get_logger().info('intersections no exist')
-            return None
-        return intersections[-1]
+                else:
+                    # self.get_logger().info('found point in circle')
+                    sqrt_disc = np.sqrt(disc)
+                    t1 = (-b + sqrt_disc) / (2 * a)
+                    t2 = (-b - sqrt_disc) / (2 * a)
+
+                    if 0 <= t1 <= 1 and 0 <= t2 <= 1:   # both valid
+                        t = max(t1, t2)
+                    elif 0 <= t1 <= 1:
+                        t = t1
+                    elif 0 <= t2 <= 1:
+                        t = t2
+                    else:
+                        # self.get_logger().info("invalid solutions")
+                        continue
+                    intersections.append(start + t * V)
+            if not intersections:
+                cur_lookahead += 0.3
+                # self.get_logger().info(f'intersections no exist, increasing lookahead to {cur_lookahead}')
+            else:
+                self.publish_point(intersections[-1])
+                return intersections[-1]
+        
+        self.get_logger().info("no more points on traj")
+        # return None
+        
 
     def test_find_closest_point_on_trajectory(self):
         print("Testing find_closest_point_on_trajectory")
@@ -214,16 +249,17 @@ class PurePursuit(Node):
         self.trajectory.publish_viz()
 
         self.points = np.array(self.trajectory.points)
-        self.visited = np.array([False] * len(self.trajectory.points))
         # self.get_logger().info(f'Points: {",".join(self.trajectory.points)}')
-        #for p in self.points:
-        #    self.get_logger().info(str(p))
+        for p in self.points:
+            self.get_logger().info(str(p))
 
         self.initialized_traj = True
 
 
 def main(args=None):
     rclpy.init(args=args)
-    follower = PurePursuit()
+    follower = PurePursuitNat()
     rclpy.spin(follower)
     rclpy.shutdown()
+
+
