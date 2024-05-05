@@ -6,5 +6,6 @@ trajectory_planner:
     initial_pose_topic: "/initialpose"
 trajectory_follower:
   ros__parameters:
-    odom_topic: "/pf/pose/odom"
+    # odom_topic: "/pf/pose/odom"
+    odom_topic: "/odom"
     drive_topic: "/drive"

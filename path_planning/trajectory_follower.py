@@ -1,6 +1,6 @@
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
-from geometry_msgs.msg import PoseArray
+from geometry_msgs.msg import PoseArray, Point
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
@@ -8,6 +8,7 @@ from tf_transformations import euler_from_quaternion
 import numpy as np
 
 from .utils import LineTrajectory
+from visualization_msgs.msg import Marker
 
 
 class PurePursuit(Node):
@@ -21,7 +22,8 @@ class PurePursuit(Node):
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-        self.drive_topic = "/vesc/low_level/input/navigation"
+        # self.drive_topic = "/vesc/low_level/input/navigation"
+        self.driver_topic = "/drive"
         self.get_logger().info(f'{self.drive_topic}')
 
         self.lookahead = 0.8  # FILL IN #
@@ -45,6 +47,7 @@ class PurePursuit(Node):
                                                  self.odom_callback,
                                                  1)
         
+        self.point_pub = self.create_publisher(Marker, "lookahead", 1)
         # self.test_find_closest_point_on_trajectory()
 
     def dist2(self, p1, p2):
@@ -66,6 +69,29 @@ class PurePursuit(Node):
             
         return minDist, closestIdx
 
+
+    def publish_point(self, p):
+        # Construct a line
+        msg = Marker()
+        msg.type = Marker.POINTS
+        msg.header.frame_id = "map"
+
+        # Set the size and color
+        msg.scale.x = 0.1
+        msg.scale.y = 0.1
+        msg.color.a = 1.
+        msg.color.r = 0.0
+        msg.color.g = 0.0
+        msg.color.g = 1.0
+
+        # Fill the line with the desired values
+        pt = Point()
+        pt.x = p[0]
+        pt.y = p[1]
+        msg.points.append(pt)
+
+        # Publish the line
+        self.point_pub.publish(msg)
 
     def odom_callback(self, msg):
         # self.get_logger().info("received odom msg")
@@ -97,14 +123,22 @@ class PurePursuit(Node):
         drive_cmd = AckermannDriveStamped()
         
         if target is None:
+            self.get_logger().info("no target")
             drive_cmd.drive.speed = 0.0
         else:
+            
             angle = self.find_steering_angle(p, theta, target)
+            if np.isnan(angle):
+                self.get_logger().info("null angle")
+                angle = 0.0
             if np.abs(angle) < 0.05:
                 drive_cmd.drive.speed = 2.0
             else:
                 drive_cmd.drive.speed = self.speed*1.0
+
+            self.get_logger().info(f'angle: {angle}, speed: {drive_cmd.drive.speed}, target: {target}')
             drive_cmd.drive.steering_angle = angle
+            self.publish_point(target)
             
         self.drive_pub.publish(drive_cmd)
             
@@ -116,6 +150,7 @@ class PurePursuit(Node):
         # steer
         d = np.linalg.norm(target)
         eta = np.arccos(np.dot(car_vec, target)/(d * np.linalg.norm(car_vec)))
+        # self.get_logger().info(f'{eta}, {np.dot(car_vec, target)}, {np.linalg.norm(car_vec)}')
         delta = np.arctan(2*self.wheelbase_length*np.sin(eta))
         sign = np.sign(np.cross(car_vec, target))
         return delta*sign
