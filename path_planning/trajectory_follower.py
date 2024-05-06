@@ -123,20 +123,20 @@ class PurePursuit(Node):
         drive_cmd = AckermannDriveStamped()
         
         if target is None:
-            self.get_logger().info("no target")
+            # self.get_logger().info("no target")
             drive_cmd.drive.speed = 0.0
         else:
             
             angle = self.find_steering_angle(p, theta, target)
             if np.isnan(angle):
-                self.get_logger().info("null angle")
+                # self.get_logger().info("null angle")
                 angle = 0.0
             if np.abs(angle) < 0.05:
                 drive_cmd.drive.speed = 2.0
             else:
                 drive_cmd.drive.speed = self.speed*1.0
 
-            self.get_logger().info(f'angle: {angle}, speed: {drive_cmd.drive.speed}, target: {target}')
+            # self.get_logger().info(f'angle: {angle}, speed: {drive_cmd.drive.speed}, target: {target}')
             drive_cmd.drive.steering_angle = angle
             self.publish_point(target)
             

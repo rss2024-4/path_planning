@@ -1,15 +1,36 @@
 import numpy as np
 import heapq
 import math
+import os
+import json
 
 class ASTAR:
 
-    def __init__(self, obstacles, start, goal):
-        self.grid = self.Grid(obstacles, .125)
+    def __init__(self, obstacles, start, goal, path, logger):
+        self.centerline = []
+        self.load_centerline(path)
+
+        # self.grid = self.Grid(obstacles, self.centerline, logger, .125)
+        self.grid = self.Grid(obstacles, self.centerline, logger, 0.5)
         self.start = start
         self.goal = goal
+
+        self.logger = logger
+        self.logger.info("testing logger")
+        
         print(self.grid)
 
+    def load_centerline(self, path):
+        # path = "/home/racecar/racecar_ws/install/path_planning/share/path_planning/example_trajectories/full_lane.traj"
+        # print("Loading trajectory:", path)
+
+        # resolve all env variables in path
+        path = os.path.expandvars(path)
+
+        with open(path) as json_file:
+            json_data = json.load(json_file)
+            for p in json_data["points"]:
+                self.centerline.append(np.array((p["x"], p["y"])))
     class Node:
         def __init__(self, x, y, obstacle=False):
             self.x = x
@@ -18,22 +39,72 @@ class ASTAR:
             self.g = float('inf')  # distance from start node
             self.h = float('inf')  # heuristic distance to goal node
             self.parent = None
+            self.direction = None
 
         def __lt__(self, other):
             return (self.g + self.h) < (other.g + other.h)
 
     class Grid:
-        def __init__(self, obstacles, cell_size=1):
+        def __init__(self, obstacles, centerline, logger, cell_size=1):
+            #  list of points representing the centerline
+            self.centerline = centerline
             self.cell_size = cell_size
             self.width_min = -62.0
             self.width_max = 27.0
             self.height_min = -5.0
             self.height_max = 40.0
+            # self.width_min = -60.0
+            # self.width_max = 0.
+            # self.height_min = -4.0
+            # self.height_max = 40.0 
+            self.logger = logger
             width_range = np.linspace(self.width_min, self.width_max, (self.width_max - self.width_min)/self.cell_size + 1)
             height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/self.cell_size + 1)
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
+            self.calculate_vectors()
 
+        
+        # for vector field processing
+        def dist2(self, p1, p2):
+            return (p1[0]-p2[0])**2 + (p1[1] - p2[1])**2
+    
+        def lineSegToPoint2(self, start, end, p):
+            l = self.dist2(start, end)
+            t = max(0, min(1, np.dot(p-start, end-start)/l))
+            projection = start + t * (end-start)
+            return self.dist2(p, projection), projection
+
+        def calculate_vectors(self):
+            # print('calculating vectors')
+            self.logger.info("calculating vectors")
+            for p in self.nodes:
+                if self.nodes[p].obstacle:
+                    continue
+                minDist = None
+                # closestPoint = None
+                closestIdx = None
+
+                for i in range(len(self.centerline)-1):
+                    start, end = self.centerline[i], self.centerline[i+1]
+                    dist, projection = self.lineSegToPoint2(start, end, p)
+                    if not minDist or dist < minDist:
+                        minDist = dist
+                        # closestPoint = projection
+                        closestIdx = i
+                    
+                centerline_vec = np.array((self.centerline[closestIdx][0] - self.centerline[closestIdx+1][0], \
+                                  self.centerline[closestIdx][1] - self.centerline[closestIdx+1][1]))
+                grid_vec = np.array((p[0] - self.centerline[closestIdx][0], \
+                            p[1] - self.centerline[closestIdx][1]))
+                cross = np.cross(grid_vec, centerline_vec)
+                # self.logger.info(f'cross: {cross}')
+                if cross > 0:
+                    self.nodes[p].direction = centerline_vec / np.linalg.norm(centerline_vec)
+                else:
+                    self.nodes[p].direction = -1*centerline_vec / np.linalg.norm(centerline_vec)
+
+            self.logger.info("done calculating vectors")
         def place_obstacles(self, obstacles):
             for obstacle in obstacles:
                 x = obstacle[0]
@@ -69,6 +140,7 @@ class ASTAR:
         def __getitem__(self, coordinates):
             x, y = coordinates
             return self.nodes[(x, y)]
+        
 
         def get_neighbors(self, node):
             # returns neighbors and cost of moving to neighbor
@@ -135,7 +207,7 @@ class ASTAR:
     
     def optimize_path(self, path):
         new_path = []
-        i = 0;
+        i = 0
         while True:
             pt1 = path[i]
             new_path.append(pt1)

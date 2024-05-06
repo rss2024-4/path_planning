@@ -16,7 +16,6 @@ class LoadTrajectory(Node):
 
         self.declare_parameter("trajectory", "default")
         self.path = self.get_parameter("trajectory").get_parameter_value().string_value
-
         # initialize and load the trajectory
         self.trajectory = LineTrajectory(self, "/loaded_trajectory")
         self.get_logger().info(f"Loading from {self.path}")
@@ -32,7 +31,7 @@ class LoadTrajectory(Node):
         self.trajectory.publish_viz()
 
         # send the trajectory
-        self.publish_trajectory()
+        # self.publish_trajectory()
 
     def publish_trajectory(self):
         self.get_logger().info(f'Publishing trajectory to: {self.pub_topic}')

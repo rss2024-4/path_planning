@@ -6,7 +6,6 @@
         <param from="$(find-pkg-share path_planning)/config/sim/sim_config.yaml"/>
     </node>
     <node pkg="path_planning" exec="trajectory_loader" name="trajectory_loader">
-        <!--        <param name="trajectory" value="$HOME/lab6_trajectories/example.traj"/>-->
-        <param name="trajectory" value="$(find-pkg-share path_planning)/"/>
+        <param name="trajectory" value="$(find-pkg-share path_planning)/example_trajectories/lane-segment-1.traj"/>
     </node>
 </launch>

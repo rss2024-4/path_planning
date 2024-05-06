@@ -3,13 +3,14 @@ from rclpy.node import Node
 import numpy as np
 
 assert rclpy
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose, Point
 from visualization_msgs.msg import MarkerArray, Marker
 from nav_msgs.msg import OccupancyGrid, Odometry
 from .utils import LineTrajectory
 from .rrt import RRT, RRTStar
 from .astar import ASTAR
 import tf_transformations as tf
+from std_msgs.msg import Header
 
 
 class PathPlan(Node):
@@ -22,13 +23,17 @@ class PathPlan(Node):
         self.declare_parameter('odom_topic', "default")
         self.declare_parameter('map_topic', "default")
         self.declare_parameter('initial_pose_topic', "default")
+        self.declare_parameter('centerline', "default")
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.map_topic = self.get_parameter('map_topic').get_parameter_value().string_value
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
+        self.centerline = self.get_parameter('centerline').get_parameter_value().string_value
 
         self.method = "astar"
         # self.method = "rrt"
+
+        self.get_logger().info(f'Path center: {self.centerline}')
 
         self.map_sub = self.create_subscription(
             OccupancyGrid,
@@ -71,6 +76,45 @@ class PathPlan(Node):
         self.start = None
 
         # self.create_timer(0.05, self.timer_cb)
+        self.vec_pub = self.create_publisher(MarkerArray, "/vectors", 10)
+
+    def publish_vectors(self, vectors):
+        id = 3
+        markers = []
+        for start, end in vectors:
+            marker = Marker()
+            stamp = self.get_clock().now().to_msg()
+            header = Header()
+            header.stamp = stamp
+            header.frame_id = "map"
+
+            marker.header = header
+            marker.id = id
+            marker.type = marker.ARROW  # line strip
+
+            start_point = Point()
+            start_point.x = start[0]
+            start_point.y = start[1]
+
+            end_p = Point()
+            end_p.x = end[0]
+            end_p.y = end[1]
+            
+            marker.points = [start_point, end_p]
+            marker.scale.x = 0.1
+            marker.scale.y = 0.3
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            marker.color.a = 1.0
+
+            id += 1
+
+            markers.append(marker)
+
+        markers_msg = MarkerArray()
+        markers_msg.markers = markers
+        self.vec_pub.publish(markers_msg)
 
     def map_cb(self, msg):
         self.get_logger().info("Processing Map")
@@ -95,6 +139,31 @@ class PathPlan(Node):
         # self.get_logger().info(",".join(str(element) for element in self.obstacles))
         self.get_logger().info("Map processed")
 
+        # for testing vectors
+        # astar = ASTAR(self.obstacles, [-30, 33], [-6, 25], self.centerline, self.get_logger()) 
+        # self.get_logger().info(f'astar initialized: {len(astar.grid.nodes)}')
+        # points_pubbed = 0
+        # all_vecs = []
+        # for p in astar.grid.nodes:
+        #     if astar.grid.nodes[p].obstacle:
+        #         continue
+        #     points_pubbed += 1
+        #     start = p
+        #     end = np.array(p) + astar.grid.nodes[p].direction
+        #     all_vecs.append([start, end])
+
+        # self.publish_vectors(all_vecs)
+        # self.get_logger().info(f'points-pubbed: {points_pubbed}')
+        # all_points = []
+        # for p in astar.grid.nodes:
+        #     start = p
+        #     end = np.array(p) + 2*astar.grid.nodes[p].direction
+        #     all_points.append(start)
+        #     all_points.append(end)
+        
+        # self.get_logger().info(f'all points: {len(all_points)}')
+        # self.publish_vectors(all_points)
+
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
         
@@ -108,7 +177,12 @@ class PathPlan(Node):
         if self.method == "astar":
             self.get_logger().info("Start: (%s,%s)" % (self.start[0],self.start[1]))
             self.get_logger().info("Goal: (%s,%s)" % (goal[0],goal[1]))
-            astar = ASTAR(self.obstacles, self.start, goal)        
+            astar = ASTAR(self.obstacles, self.start, goal, self.get_logger())   
+            # for p in astar.nodes:
+            #     start = p
+            #     end = np.array(p) + p.direction
+            #     self.publish_vector(start, end) 
+
             # self.get_logger().info(",".join(str(loc)+str(astar.grid.nodes[loc].obstacle) for loc in astar.grid.nodes))
             self.get_logger().info("Finding path")
             traj = astar.plan(self.start, goal)

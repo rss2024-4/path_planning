@@ -191,7 +191,7 @@ class LineTrajectory:
 
     def publish_trajectory(self, duration=0.0):
         should_publish = len(self.points) > 1
-        self.node.get_logger().info(f'Should publish: {should_publish}')
+        self.node.get_logger().info(f'Should publish traj: {should_publish}')
         if self.visualize and self.traj_pub.get_subscription_count() > 0:
             self.node.get_logger().info("Publishing trajectory")
             marker = Marker()
@@ -201,18 +201,29 @@ class LineTrajectory:
             marker.type = marker.LINE_STRIP  # line strip
             marker.lifetime = rclpy.duration.Duration(seconds=duration).to_msg()
             if should_publish:
-                marker.action = marker.ADD
-                marker.scale.x = 0.3
-                marker.color.r = 1.0
-                marker.color.g = 1.0
-                marker.color.b = 1.0
-                marker.color.a = 1.0
+                # marker.action = marker.ADD
+                # marker.points = [Point(p[0], p[1]) for p in self.points]
+                new_points = []
                 for p in self.points:
                     pt = Point()
                     pt.x = p[0]
                     pt.y = p[1]
                     pt.z = 0.0
-                    marker.points.append(pt)
+                    new_points.append(pt)
+                
+                marker.points = new_points
+                marker.scale.x = 0.3
+                marker.scale.y = 0.3
+                marker.color.r = 0.0
+                marker.color.g = 1.0
+                marker.color.b = 0.0
+                marker.color.a = 1.0
+                # for p in self.points:
+                #     pt = Point()
+                #     pt.x = p[0]
+                #     pt.y = p[1]
+                #     pt.z = 0.0
+                #     marker.points.append(pt)
             else:
                 # delete
                 marker.action = marker.DELETE

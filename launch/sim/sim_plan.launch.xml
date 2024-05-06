@@ -1,5 +1,6 @@
 <launch>
     <node pkg="path_planning" exec="trajectory_planner" name="trajectory_planner" output="screen">
         <param from="$(find-pkg-share path_planning)/config/sim/sim_config.yaml"/>
+        <param name="centerline" value="$(find-pkg-share path_planning)/example_trajectories/full-lane.traj"/>
     </node>
 </launch>
