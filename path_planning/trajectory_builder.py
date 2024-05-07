@@ -53,11 +53,11 @@ class BuildTrajectory(Node):
         self.trajectory.addPoint((point.x, point.y))
         self.data_points.append((point.x, point.y))
         self.mark_pt(self.trajectory_points, (0.0, 1.0, 0.0), self.data_points)
-        if self.count > 2:
-            self.get_logger().info("Publishing trajectory")
-            self.publish_trajectory()
-            self.trajectory.publish_viz()
-            self.saveTrajectory()
+        # if self.count > 2:
+        #     self.get_logger().info("Publishing trajectory")
+        #     self.publish_trajectory()
+        #     self.trajectory.publish_viz()
+        self.saveTrajectory()
 
     def tuple_to_point(self, data_points: List[Tuple[float, float]]) -> List[Point]:
         return [Point(x=x, y=y) for x, y in data_points]
