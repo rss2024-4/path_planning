@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
+import math
 
 assert rclpy
 from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, PoseArray, Pose, Point
@@ -171,6 +172,15 @@ class PathPlan(Node):
             self.get_logger().info(f"Path found: {traj}")
             self.traj_pub.publish(self.trajectory.toPoseArray())
             self.trajectory.publish_viz()
+
+        total_dis = 0.0
+        for i in range(len(traj)-1):
+            pt1 = traj[i]
+            pt2 = traj[i+1]
+            total_dis += math.sqrt((pt1[0]-pt2[0])**2 + (pt1[1]-pt2[1])**2)
+        self.get_logger().info("Total Distance of Traj: " + str(total_dis))
+        self.get_logger().info("Number of Traj Points: " + str(len(traj)))
+
 
     def pose_to_T(self, pose_msg):
         th = tf.euler_from_quaternion([
