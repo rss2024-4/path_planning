@@ -139,6 +139,27 @@ class ASTAR:
         def is_close_to(self, x, y, epsilon = 0.0001):
             return x > y-epsilon and x < y + epsilon
             
+        def opposite_dir(self, node, dir_to_neighbor):
+            # return False
+            dx, dy = dir_to_neighbor
+            new_x, new_y = node.x + dx, node.y + dy
+            neighbor = self.nodes[(new_x, new_y)]
+            if neighbor.direction is False:
+                return False
+            v1 = dir_to_neighbor
+            v2 = neighbor.direction
+            dot_product = v1[0] * v2[0] + v1[1] * v2[1]
+            magnitude_v1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2)
+            magnitude_v2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2)
+            
+            cos_theta = dot_product / (magnitude_v1 * magnitude_v2)
+            theta_rad = math.acos(cos_theta)
+            theta_deg = math.degrees(theta_rad)
+
+            if theta_deg > 110 and theta_deg < 250:
+                return True
+            return False
+
 
         def get_neighbors(self, node):
             # returns neighbors and cost of moving to neighbor
@@ -154,23 +175,24 @@ class ASTAR:
                         directions_valid[i] = True
 
             # account for diagonals!! 
-            prev_dir_valid = directions_valid[3]
-            prev_dir = directions[3]
-            for i in range(len(directions)):
-                cur_dir_valid = directions_valid[i]
-                cur_dir = directions[i]
-                if cur_dir_valid and prev_dir_valid:
-                    diagonal_dx = prev_dir[0] + cur_dir[0]
-                    diagonal_dy = prev_dir[1] + cur_dir[1]
-                    new_x, new_y = node.x + diagonal_dx, node.y + diagonal_dy
-                    if (self.width_min <= new_x < self.width_max and \
-                        self.height_min <= new_y < self.height_max) and \
-                        not self.nodes[(new_x, new_y)].obstacle and \
-                        not (self.is_close_to(node.direction[0],-1 * self.nodes[(new_x, new_y)].direction[0]) and \
-                             self.is_close_to(node.direction[1], -1 *self.nodes[(new_x, new_y)].direction[1])):
-                        neighbors.append((self.nodes[(new_x, new_y)], np.sqrt(2)*self.cell_size))
-                prev_dir_valid = cur_dir_valid
-                prev_dir = cur_dir
+            # prev_dir_valid = directions_valid[3]
+            # prev_dir = directions[3]
+            # for i in range(len(directions)):
+            #     cur_dir_valid = directions_valid[i]
+            #     cur_dir = directions[i]
+            #     if cur_dir_valid and prev_dir_valid:
+            #         diagonal_dx = prev_dir[0] + cur_dir[0]
+            #         diagonal_dy = prev_dir[1] + cur_dir[1]
+            #         new_x, new_y = node.x + diagonal_dx, node.y + diagonal_dy
+            #         if (self.width_min <= new_x < self.width_max and \
+            #             self.height_min <= new_y < self.height_max) and \
+            #             not self.nodes[(new_x, new_y)].obstacle and \
+            #             not (self.is_close_to(node.direction[0],-1 * self.nodes[(new_x, new_y)].direction[0]) and \
+            #                  self.is_close_to(node.direction[1], -1 *self.nodes[(new_x, new_y)].direction[1])):
+            #             neighbors.append((self.nodes[(new_x, new_y)], np.sqrt(2)*self.cell_size))
+            #     prev_dir_valid = cur_dir_valid
+            #     prev_dir = cur_dir
+            self.logger.info("Neighbors: "+str(len(neighbors)))
             return neighbors
         
         def get_node_from_loc(self, loc):
@@ -193,9 +215,11 @@ class ASTAR:
                 x_rounded = round(x_locs[i] * cells_per_meter) / cells_per_meter
                 y_rounded = round(y_locs[i] * cells_per_meter) / cells_per_meter
                 loc = (x_rounded, y_rounded)
-                n2 = self.nodes[loc].obstacle
-                direction = (n2[0]-n1[0], n2[1]-n1[1])
-                if n2.obstacle == True and not self.opposite_dir(n1, direction):
+                n2 = self.nodes[loc]
+                if n2.obstacle == True:
+                    return True
+                direction = (n2.x-n1.x, n2.y-n1.y)
+                if self.opposite_dir(n1, direction):
                     return True
             return False
 
@@ -254,6 +278,7 @@ class ASTAR:
 
             if current == goal:
                 path = self.reconstruct_path(current)
+                # return path
                 return self.optimize_path(path)
 
             closed_set.add(current)
