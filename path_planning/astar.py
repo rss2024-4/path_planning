@@ -149,8 +149,9 @@ class ASTAR:
                 dx, dy = directions[i]
                 new_x, new_y = node.x + dx, node.y + dy
                 if (self.width_min <= new_x < self.width_max and self.height_min <= new_y < self.height_max) and not self.nodes[(new_x, new_y)].obstacle:
-                    neighbors.append((self.nodes[(new_x, new_y)],self.cell_size))
-                    directions_valid[i] = True
+                    if (not self.opposite_dir(node, directions[i])):
+                        neighbors.append((self.nodes[(new_x, new_y)],self.cell_size))
+                        directions_valid[i] = True
 
             # account for diagonals!! 
             prev_dir_valid = directions_valid[3]
@@ -187,11 +188,14 @@ class ASTAR:
             dis = math.floor(math.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2))
             x_locs = np.linspace(pt1[0], pt2[0], 20*dis)
             y_locs = np.linspace(pt1[1], pt2[1], 20*dis)
+            n1 = self.nodes[pt1]
             for i in range(20*dis):
                 x_rounded = round(x_locs[i] * cells_per_meter) / cells_per_meter
                 y_rounded = round(y_locs[i] * cells_per_meter) / cells_per_meter
                 loc = (x_rounded, y_rounded)
-                if self.nodes[loc].obstacle == True:
+                n2 = self.nodes[loc].obstacle
+                direction = (n2[0]-n1[0], n2[1]-n1[1])
+                if n2.obstacle == True and not self.opposite_dir(n1, direction):
                     return True
             return False
 
@@ -218,6 +222,7 @@ class ASTAR:
             shortcut_node = None
             shortcut_j = None
             j = i+1
+            # find a pt2 where pt1 to pt2 is obstacle free
             while True:
                 pt2 = path[j]
                 shortcut = not self.grid.obstacles_along_path(pt1, pt2)
