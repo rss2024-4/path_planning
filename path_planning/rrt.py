@@ -41,12 +41,8 @@ class RRT:
 
             # If the new_node is very close to the goal, connect it directly to the goal and return the final path
             if self.dist_to_goal(self.node_list[-1].p) <= self.max_extend_length:
-                final_node = self.steer(
-                    self.node_list[-1], self.goal, self.max_extend_length
-                )
-                if not self.collision(
-                    final_node, self.node_list[-1], self.obstacle_list
-                ):
+                final_node = self.steer(self.node_list[-1], self.goal, self.max_extend_length)
+                if not self.collision(final_node, self.node_list[-1], self.obstacle_list):
                     return self.final_path(len(self.node_list) - 1)
         return None  # cannot find path
 
