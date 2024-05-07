@@ -46,6 +46,7 @@ class BuildTrajectory(Node):
         self.get_logger().info("Trajectory saved to: {}".format(self.save_path))
 
     def clicked_pose(self, msg):
+        self.get_logger().info(f'point clicked: {msg.point.x}, {msg.point.y}')
         self.count += 1
         point = Point()
         point.x = msg.point.x

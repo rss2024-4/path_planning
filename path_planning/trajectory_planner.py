@@ -77,44 +77,7 @@ class PathPlan(Node):
 
         # self.create_timer(0.05, self.timer_cb)
         self.vec_pub = self.create_publisher(MarkerArray, "/vectors", 10)
-
-    def publish_vectors(self, vectors):
-        id = 3
-        markers = []
-        for start, end in vectors:
-            marker = Marker()
-            stamp = self.get_clock().now().to_msg()
-            header = Header()
-            header.stamp = stamp
-            header.frame_id = "map"
-
-            marker.header = header
-            marker.id = id
-            marker.type = marker.ARROW  # line strip
-
-            start_point = Point()
-            start_point.x = start[0]
-            start_point.y = start[1]
-
-            end_p = Point()
-            end_p.x = end[0]
-            end_p.y = end[1]
-            
-            marker.points = [start_point, end_p]
-            marker.scale.x = 0.1
-            marker.scale.y = 0.3
-            marker.color.r = 1.0
-            marker.color.g = 0.0
-            marker.color.b = 0.0
-            marker.color.a = 1.0
-
-            id += 1
-
-            markers.append(marker)
-
-        markers_msg = MarkerArray()
-        markers_msg.markers = markers
-        self.vec_pub.publish(markers_msg)
+        self.points_pub = self.create_publisher(Marker, "/points", 10)
 
     def map_cb(self, msg):
         self.get_logger().info("Processing Map")
@@ -140,12 +103,12 @@ class PathPlan(Node):
         self.get_logger().info("Map processed")
 
         # for testing vectors
-        # astar = ASTAR(self.obstacles, [-30, 33], [-6, 25], self.centerline, self.get_logger()) 
+        self.astar = ASTAR(self.obstacles, self.centerline, self.get_logger()) 
         # self.get_logger().info(f'astar initialized: {len(astar.grid.nodes)}')
         # points_pubbed = 0
         # all_vecs = []
         # for p in astar.grid.nodes:
-        #     if astar.grid.nodes[p].obstacle:
+        #     if astar.grid.nodes[p].obstacle or p[0] > 0 or p[0] < -30.0 or p[1] > 30.0:
         #         continue
         #     points_pubbed += 1
         #     start = p
@@ -153,21 +116,20 @@ class PathPlan(Node):
         #     all_vecs.append([start, end])
 
         # self.publish_vectors(all_vecs)
-        # self.get_logger().info(f'points-pubbed: {points_pubbed}')
         # all_points = []
         # for p in astar.grid.nodes:
-        #     start = p
-        #     end = np.array(p) + 2*astar.grid.nodes[p].direction
-        #     all_points.append(start)
-        #     all_points.append(end)
-        
-        # self.get_logger().info(f'all points: {len(all_points)}')
-        # self.publish_vectors(all_points)
+        #     if astar.grid.nodes[p].obstacle or p[0] > 0 or p[0] < -30.0 or p[1] > 30.0:
+        #         continue
+        #     points_pubbed += 1
+        #     all_points.append(p)
+
+        # self.publish_points(all_points)
+        # self.get_logger().info(f'points-pubbed: {points_pubbed}')
+
 
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
         
-
     def goal_cb(self, msg):
 
         self.method = "astar"
@@ -177,7 +139,7 @@ class PathPlan(Node):
         if self.method == "astar":
             self.get_logger().info("Start: (%s,%s)" % (self.start[0],self.start[1]))
             self.get_logger().info("Goal: (%s,%s)" % (goal[0],goal[1]))
-            astar = ASTAR(self.obstacles, self.start, goal, self.get_logger())   
+            # astar = ASTAR(self.obstacles, self.start, goal, self.centerline, self.get_logger())   
             # for p in astar.nodes:
             #     start = p
             #     end = np.array(p) + p.direction
@@ -185,7 +147,7 @@ class PathPlan(Node):
 
             # self.get_logger().info(",".join(str(loc)+str(astar.grid.nodes[loc].obstacle) for loc in astar.grid.nodes))
             self.get_logger().info("Finding path")
-            traj = astar.plan(self.start, goal)
+            traj = self.astar.plan(self.start, goal)
             if not traj:
                 self.get_logger().info("No Path Found.")
                 return
@@ -194,7 +156,7 @@ class PathPlan(Node):
             self.get_logger().info(f"Path found: {traj}")
             
             self.traj_pub.publish(self.trajectory.toPoseArray())
-            self.trajectory.publish_viz()
+            self.trajectory.publish_viz(color=(0., 0., 1.))
         
         elif self.method == "rrt":
             rrt = RRT(self.start, goal, self.obstacles, self.x_bounds, self.y_bounds)
@@ -243,6 +205,73 @@ class PathPlan(Node):
         if len(self.obstacles) == 0:
             return
         self.obstacles_pub.publish(self.arr_to_pose_arr(self.obstacles))
+    
+    def publish_vectors(self, vectors):
+        id = 3
+        markers = []
+        for start, end in vectors:
+            marker = Marker()
+            stamp = self.get_clock().now().to_msg()
+            header = Header()
+            header.stamp = stamp
+            header.frame_id = "map"
+
+            marker.header = header
+            marker.id = id
+            marker.type = marker.ARROW  # line strip
+
+            start_point = Point()
+            start_point.x = start[0]
+            start_point.y = start[1]
+
+            end_p = Point()
+            end_p.x = end[0]
+            end_p.y = end[1]
+            
+            marker.points = [start_point, end_p]
+            marker.scale.x = 0.1
+            marker.scale.y = 0.1
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+            marker.color.a = 1.0
+
+            id += 1
+
+            markers.append(marker)
+
+        markers_msg = MarkerArray()
+        markers_msg.markers = markers
+        self.vec_pub.publish(markers_msg)
+
+    def publish_points(self, points):
+        id = 3
+        marker = Marker()
+        stamp = self.get_clock().now().to_msg()
+        header = Header()
+        header.stamp = stamp
+        header.frame_id = "map"
+
+        marker.header = header
+        marker.id = id
+        marker.type = marker.POINTS  # line strip
+
+        new_points = []
+        for p in points:
+            newp = Point()
+            newp.x = p[0]
+            newp.y = p[1]
+            new_points.append(newp)
+        
+        marker.points = new_points
+        marker.scale.x = 0.05
+        marker.scale.y = 0.05
+        marker.color.r = 0.0
+        marker.color.g = 0.0
+        marker.color.b = 1.0
+        marker.color.a = 1.0
+
+        self.points_pub.publish(marker)
 
 
 def main(args=None):

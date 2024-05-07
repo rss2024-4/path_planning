@@ -6,19 +6,14 @@ import json
 
 class ASTAR:
 
-    def __init__(self, obstacles, start, goal, path, logger):
+    def __init__(self, obstacles, path, logger):
         self.centerline = []
         self.load_centerline(path)
 
         # self.grid = self.Grid(obstacles, self.centerline, logger, .125)
-        self.grid = self.Grid(obstacles, self.centerline, logger, 0.5)
-        self.start = start
-        self.goal = goal
+        self.grid = self.Grid(obstacles, self.centerline, logger, 0.125)
 
         self.logger = logger
-        self.logger.info("testing logger")
-        
-        print(self.grid)
 
     def load_centerline(self, path):
         # path = "/home/racecar/racecar_ws/install/path_planning/share/path_planning/example_trajectories/full_lane.traj"
@@ -110,7 +105,7 @@ class ASTAR:
                 x = obstacle[0]
                 y = obstacle[1]
                 # rad = obstacle[2]
-                rad = .37
+                rad = .1
                 x_range = (x-rad, x+rad)
                 y_range = (y-rad, y+rad)
                 x_min = x-rad
@@ -141,6 +136,9 @@ class ASTAR:
             x, y = coordinates
             return self.nodes[(x, y)]
         
+        def is_close_to(self, x, y, epsilon = 0.0001):
+            return x > y-epsilon and x < y + epsilon
+            
 
         def get_neighbors(self, node):
             # returns neighbors and cost of moving to neighbor
@@ -164,7 +162,11 @@ class ASTAR:
                     diagonal_dx = prev_dir[0] + cur_dir[0]
                     diagonal_dy = prev_dir[1] + cur_dir[1]
                     new_x, new_y = node.x + diagonal_dx, node.y + diagonal_dy
-                    if (self.width_min <= new_x < self.width_max and self.height_min <= new_y < self.height_max) and not self.nodes[(new_x, new_y)].obstacle:
+                    if (self.width_min <= new_x < self.width_max and \
+                        self.height_min <= new_y < self.height_max) and \
+                        not self.nodes[(new_x, new_y)].obstacle and \
+                        not (self.is_close_to(node.direction[0],-1 * self.nodes[(new_x, new_y)].direction[0]) and \
+                             self.is_close_to(node.direction[1], -1 *self.nodes[(new_x, new_y)].direction[1])):
                         neighbors.append((self.nodes[(new_x, new_y)], np.sqrt(2)*self.cell_size))
                 prev_dir_valid = cur_dir_valid
                 prev_dir = cur_dir

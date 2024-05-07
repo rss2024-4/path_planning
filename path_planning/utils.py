@@ -189,7 +189,7 @@ class LineTrajectory:
         elif self.end_pub.get_subscription_count() == 0:
             print("Not publishing end point, no subscribers")
 
-    def publish_trajectory(self, duration=0.0):
+    def publish_trajectory(self, duration=0.0, color=(0., 1., 0.)):
         should_publish = len(self.points) > 1
         self.node.get_logger().info(f'Should publish traj: {should_publish}')
         if self.visualize and self.traj_pub.get_subscription_count() > 0:
@@ -212,11 +212,11 @@ class LineTrajectory:
                     new_points.append(pt)
                 
                 marker.points = new_points
-                marker.scale.x = 0.3
-                marker.scale.y = 0.3
-                marker.color.r = 0.0
-                marker.color.g = 1.0
-                marker.color.b = 0.0
+                marker.scale.x = 0.1
+                marker.scale.y = 0.1
+                marker.color.r = color[0]
+                marker.color.g = color[1]
+                marker.color.b = color[2]
                 marker.color.a = 1.0
                 # for p in self.points:
                 #     pt = Point()
@@ -232,12 +232,12 @@ class LineTrajectory:
         elif self.traj_pub.get_subscription_count() == 0:
             print("Not publishing trajectory, no subscribers")
 
-    def publish_viz(self, duration=0):
+    def publish_viz(self, duration=0, color=(0., 1., 0.)):
         if not self.visualize:
             print("Cannot visualize path, not initialized with visualization enabled")
             return
         self.publish_start_point(duration=duration)
-        self.publish_trajectory(duration=duration)
+        self.publish_trajectory(duration=duration, color=color)
         self.publish_end_point(duration=duration)
 
     def make_header(self, frame_id, stamp=None):
