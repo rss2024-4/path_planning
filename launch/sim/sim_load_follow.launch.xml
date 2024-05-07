@@ -1,9 +1,10 @@
 <launch>
     <node pkg="path_planning" exec="trajectory_loader" name="trajectory_loader">
-        <param name="trajectory" value="$(find-pkg-share path_planning)/example_trajectories/final_path.traj"/>
+        <param name="trajectory" value="$(find-pkg-share path_planning)/example_trajectories/default_path.traj"/>
         <param name="publish" value="True"/>
     </node>
-    <node pkg="path_planning" exec="trajectory_follower" name="trajectory_follower">
+    <node pkg="path_planning" exec="trajectory_goal_follower" name="trajectory_goal_follower">
         <param from="$(find-pkg-share path_planning)/config/sim/sim_config.yaml"/>
+        <param name="centerline" value="$(find-pkg-share path_planning)/example_trajectories/full-lane.traj"/>
     </node>
 </launch>

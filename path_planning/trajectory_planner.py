@@ -31,6 +31,13 @@ class PathPlan(Node):
         self.initial_pose_topic = self.get_parameter('initial_pose_topic').get_parameter_value().string_value
         self.centerline = self.get_parameter('centerline').get_parameter_value().string_value
 
+        self.plan_topic = self.create_subscription(
+            PoseArray,
+            "/plan",
+            self.plan_for_follower,
+            1
+        )
+
         self.method = "astar"
         # self.method = "rrt"
 
@@ -56,6 +63,12 @@ class PathPlan(Node):
             10
         )
 
+        self.goal_traj_pub = self.create_publisher(
+            PoseArray,
+            "/trajectory/current",
+            10
+        )
+
         self.pose_sub = self.create_subscription(
             Odometry,
             self.odom_topic,
@@ -70,6 +83,7 @@ class PathPlan(Node):
         )
 
         self.trajectory = LineTrajectory(node=self, viz_namespace="/planned_trajectory")
+        self.goal_trajectory = LineTrajectory(node=self, viz_namespace="/goal_trajectory")
 
         self.x_bounds = (-61, 25) # in meters
         self.y_bounds = (-16, 48) # in meters
@@ -94,45 +108,32 @@ class PathPlan(Node):
                     px[0,2] = j*msg.info.resolution
                     p = T@px
                     self.obstacles.append([p[0,2], p[1,2], 0.25])
-        # elif self.method == "astar":
-
-        # self.get_logger().info(str(min([element[0] for element in self.obstacles])))
-        # self.get_logger().info(str(max([element[0] for element in self.obstacles])))
-        # self.get_logger().info(str(min([element[1] for element in self.obstacles])))
-        # self.get_logger().info(str(max([element[1] for element in self.obstacles])))
-        # self.get_logger().info(",".join(str(element) for element in self.obstacles))
-        self.get_logger().info("Map processed")
 
         # for testing vectors
         self.astar = ASTAR(self.obstacles, self.centerline, self.get_logger()) 
-        # self.get_logger().info(f'astar initialized: {len(astar.grid.nodes)}')
-        # points_pubbed = 0
-        # all_vecs = []
-        # for p in astar.grid.nodes:
-        #     if astar.grid.nodes[p].obstacle or p[0] > 0 or p[0] < -30.0 or p[1] > 30.0:
-        #         continue
-        #     points_pubbed += 1
-        #     start = p
-        #     end = np.array(p) + astar.grid.nodes[p].direction
-        #     all_vecs.append([start, end])
-
-        # self.publish_vectors(all_vecs)
-        # all_points = []
-        # for p in astar.grid.nodes:
-        #     if astar.grid.nodes[p].obstacle or p[0] > 0 or p[0] < -30.0 or p[1] > 30.0:
-        #         continue
-        #     points_pubbed += 1
-        #     all_points.append(p)
-
-        # self.publish_points(all_points)
-        # self.get_logger().info(f'points-pubbed: {points_pubbed}')
-
+        self.get_logger().info("Map processed")
 
     def pose_cb(self, pose):
         self.start = [pose.pose.pose.position.x, pose.pose.pose.position.y]
-        
-    def goal_cb(self, msg):
 
+    def plan_for_follower(self, msg):
+        start = msg.poses[0].Position.x, msg.poses[0].Position.y
+        end = msg.poses[1].Position.x, msg.poses[1].Position.y
+        traj = self.astar.plan(start, end)
+        if not traj:
+            self.get_logger().info("No Path Found.")
+            return
+        
+        self.goal_trajectory.points = traj
+        self.get_logger().info(f"Path found: {traj}")
+        
+        self.goal_traj_pub.publish(self.goal_trajectory.toPoseArray())
+        self.goal_trajectory.publish_viz(color=(0., 0., 1.))
+        
+
+
+
+    def goal_cb(self, msg):
         self.method = "astar"
 
         goal = [msg.pose.position.x, msg.pose.position.y]
@@ -140,20 +141,12 @@ class PathPlan(Node):
         if self.method == "astar":
             self.get_logger().info("Start: (%s,%s)" % (self.start[0],self.start[1]))
             self.get_logger().info("Goal: (%s,%s)" % (goal[0],goal[1]))
-            # astar = ASTAR(self.obstacles, self.start, goal, self.centerline, self.get_logger())   
-            # for p in astar.nodes:
-            #     start = p
-            #     end = np.array(p) + p.direction
-            #     self.publish_vector(start, end) 
-
-            # self.get_logger().info(",".join(str(loc)+str(astar.grid.nodes[loc].obstacle) for loc in astar.grid.nodes))
             self.get_logger().info("Finding path")
             traj = self.astar.plan(self.start, goal)
             if not traj:
                 self.get_logger().info("No Path Found.")
                 return
             self.trajectory.points = traj
-            # self.get_logger().info(str(traj))
             self.get_logger().info(f"Path found: {traj}")
             
             self.traj_pub.publish(self.trajectory.toPoseArray())
