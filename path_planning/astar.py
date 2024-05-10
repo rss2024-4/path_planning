@@ -57,7 +57,7 @@ class ASTAR:
             height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/self.cell_size + 1)
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
-            self.calculate_vectors()
+            # self.calculate_vectors()
 
         
         # for vector field processing
@@ -144,7 +144,8 @@ class ASTAR:
             # returns neighbors and cost of moving to neighbor
             neighbors = []
             directions = [(self.cell_size, 0), (0, self.cell_size), (-self.cell_size, 0), (0, -self.cell_size)]  # right, down, left, up
-            directions_valid = [False,False,False,False]
+            # directions_valid = [False,False,False,False]
+            directions_valid = [True] * 4
             for i in range(len(directions)):
                 dx, dy = directions[i]
                 new_x, new_y = node.x + dx, node.y + dy
@@ -164,9 +165,10 @@ class ASTAR:
                     new_x, new_y = node.x + diagonal_dx, node.y + diagonal_dy
                     if (self.width_min <= new_x < self.width_max and \
                         self.height_min <= new_y < self.height_max) and \
-                        not self.nodes[(new_x, new_y)].obstacle and \
-                        not (self.is_close_to(node.direction[0],-1 * self.nodes[(new_x, new_y)].direction[0]) and \
-                             self.is_close_to(node.direction[1], -1 *self.nodes[(new_x, new_y)].direction[1])):
+                        not self.nodes[(new_x, new_y)].obstacle: 
+                    # and \
+                    #     not (self.is_close_to(node.direction[0],-1 * self.nodes[(new_x, new_y)].direction[0]) and \
+                    #          self.is_close_to(node.direction[1], -1 *self.nodes[(new_x, new_y)].direction[1])):
                         neighbors.append((self.nodes[(new_x, new_y)], np.sqrt(2)*self.cell_size))
                 prev_dir_valid = cur_dir_valid
                 prev_dir = cur_dir
@@ -245,11 +247,14 @@ class ASTAR:
         heapq.heappush(open_set, start)
 
         while open_set:
+            # self.get_logger().info("planning??")
+            # self.logger.info("planning??")
             current = heapq.heappop(open_set)
 
             if current == goal:
                 path = self.reconstruct_path(current)
-                return self.optimize_path(path)
+                return path
+                # return self.optimize_path(path)
 
             closed_set.add(current)
 

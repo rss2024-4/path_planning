@@ -13,10 +13,15 @@ from .utils import LineTrajectory
 from visualization_msgs.msg import Marker
 
 import tf_transformations as tf
+import os
+import json
 
 DEFAULT = 0
 WAIT_FOR_PLAN = 1
 PLANNED_PATH = 2
+
+RIGHT = 'RIGHT'
+LEFT = 'LEFT'
 
 class PurePursuitWithTargets(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
@@ -30,7 +35,10 @@ class PurePursuitWithTargets(Node):
 
         self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
-        self.centerline = self.get_parameter('centerline').get_parameter_value().string_value
+        self.centerline_path = self.get_parameter('centerline').get_parameter_value().string_value
+        self.centerline = []
+
+        self.load_centerline(self.centerline_path)
  
         self.get_logger().info(f'{self.drive_topic}, {self.odom_topic}')
 
@@ -40,6 +48,9 @@ class PurePursuitWithTargets(Node):
         self.default_points = []
         self.default_visited = []
         self.initialized_traj = False
+
+        # which goal point to follow currently
+        self.goal_idx = 0
 
         self.trajectory = LineTrajectory("/followed_trajectory")
 
@@ -60,7 +71,7 @@ class PurePursuitWithTargets(Node):
                                                  self.odom_callback,
                                                  1)
         
-        self.point_pub = self.create_publisher(Marker, "lookahead", 1)
+        self.point_pub = self.create_publisher(Marker, "/lookahead", 1)
 
 
         # goal stuff
@@ -83,6 +94,16 @@ class PurePursuitWithTargets(Node):
         self.initialized_map = False
         self.goal_trajectory = LineTrajectory(node=self, viz_namespace="/goal_trajectory")
 
+        self.start_wait = None
+
+    def load_centerline(self, path):
+        path = os.path.expandvars(path)
+
+        with open(path) as json_file:
+            json_data = json.load(json_file)
+            for p in json_data["points"]:
+                self.centerline.append(np.array((p["x"], p["y"])))
+
     def map_cb(self, msg):
         self.get_logger().info("Processing Map")
         T = self.pose_to_T(msg.info.origin)
@@ -99,20 +120,54 @@ class PurePursuitWithTargets(Node):
                     obstacles.append([p[0,2], p[1,2], 0.25])
 
         # for testing vectors
-        self.astar = ASTAR(obstacles, self.centerline, self.get_logger()) 
+        self.astar = ASTAR(obstacles, self.centerline_path, self.get_logger()) 
+        # self.astar = ASTAR(obstacles) 
         self.initialized_map = True
         self.get_logger().info("Map processed")
+    
+    def lineSegToPoint2(self, start, end, p):
+            l = self.dist2(start, end)
+            t = max(0, min(1, np.dot(p-start, end-start)/l))
+            projection = start + t * (end-start)
+            return self.dist2(p, projection), projection
+    
+    def centerline_side(self, p):
+        self.get_logger().info(f'centerline side {p}')
+        minDist = None
+        closestIdx = None
+
+        for i in range(len(self.centerline)-1):
+            start, end = self.centerline[i], self.centerline[i+1]
+            self.get_logger().info(f'centerline side {start}, {end}')
+            dist, projection = self.lineSegToPoint2(start, end, p)
+            if not minDist or dist < minDist:
+                minDist = dist
+                closestIdx = i
+            
+            # maybe this doesn't work if you're getting farther from each segment stop b/c u prob found closest
+            if dist > minDist + 2:
+                break
+            
+        centerline_vec = np.array((self.centerline[closestIdx][0] - self.centerline[closestIdx+1][0], \
+                            self.centerline[closestIdx][1] - self.centerline[closestIdx+1][1]))
+        grid_vec = np.array((p[0] - self.centerline[closestIdx][0], \
+                    p[1] - self.centerline[closestIdx][1]))
+        cross = np.cross(grid_vec, centerline_vec)
+
+        if cross > 0:
+            return RIGHT
+        else:
+            return LEFT
 
     def goal_cb(self, msg):
         self.get_logger().info(f'got goal point: {msg.point}')
-        # point and whether or not it was already visited
-        self.goal_points.append(((msg.point.x, msg.point.y), False))
+        p = (msg.point.x, msg.point.y)
+        self.goal_points.append(((msg.point.x, msg.point.y), self.centerline_side(p)))
 
     def dist2(self, p1, p2):
         return (p1[0]-p2[0])**2 + (p1[1] - p2[1])**2
 
     def odom_callback(self, msg):
-        # self.get_logger().info("received odom msg")
         xpos = msg.pose.pose.position.x
         ypos = msg.pose.pose.position.y
         theta = euler_from_quaternion([
@@ -124,7 +179,11 @@ class PurePursuitWithTargets(Node):
         p = np.array([xpos, ypos])
 
         if not self.initialized_traj or not self.initialized_map:
-            # self.get_logger().info("no trajectory info")
+            # self.get_logger().info("no trajectory info, no map, or no goal points")
+            return
+        
+        if len(self.goal_points) != 3:
+            # self.get_logger().info("not enough goal points")
             return
         
         # self.get_logger().info(str(self.visited))
@@ -132,42 +191,56 @@ class PurePursuitWithTargets(Node):
         visited = self.default_visited
 
         if self.state == DEFAULT:
+            # self.get_logger().info("following default")
             minDist = float('inf')
             goal = None
-            for gp, seen in self.goal_points:
-                if seen:
-                    continue
 
-                d = self.dist2(p, gp)
-                if d < 12 and d < minDist:
-                    minDist = d
-                    goal = gp
+
+            # check if close to next goal point
+            d = self.dist2(p, self.goal_points[self.goal_idx][0])
+            if d < 12 and d < minDist:
+                minDist = d
+                goal, goal_side = self.goal_points[self.goal_idx]
+                self.get_logger().info(f'goalidx, {self.goal_idx}')
             
+            # if close, then check that car is the on the same side
             if goal is not None:
                 self.get_logger().info(f'close to goal point: {goal}')
-                # stop
-                drive_cmd = AckermannDriveStamped()
-                drive_cmd.drive.speed = 0.0
-                self.drive_pub.publish(drive_cmd)
 
-                traj = self.astar.plan(p, gp)
-                if traj is not None:
-                    self.state = PLANNED_PATH
-                    self.get_logger().info(f"Receiving new trajectory to goal pose {gp} points")
+                car_side = self.centerline_side(p)
 
-                    self.goal_trajectory.clear()
-                    # self.goal_trajectory.fromPoseArray(msg)
-                    self.goal_trajectory.points = traj
-                    self.goal_trajectory.publish_viz()
+                if car_side == goal_side:
+                    self.get_logger().info(f'car on same side as goal, go to it')
+                    # stop
+                    drive_cmd = AckermannDriveStamped()
+                    drive_cmd.drive.speed = 0.0
+                    self.drive_pub.publish(drive_cmd)
 
-                    self.goal_points = np.array(self.goal_trajectory.points)
-                    self.goal_visited = np.array([False] * len(self.goal_trajectory.points))
+                    # plan a traj
+                    traj = self.astar.plan(p, goal)
+                    if traj is not None:
+                        self.state = PLANNED_PATH
+                        self.get_logger().info(f"Receiving new trajectory to goal pose {goal} points")
+
+                        self.goal_trajectory.clear()
+                        # self.goal_trajectory.fromPoseArray(msg)
+                        self.goal_trajectory.points = traj
+                        self.goal_trajectory.publish_viz()
+
+                        self.goal_path = np.array(self.goal_trajectory.points)
+                        self.goal_visited = np.array([False] * len(self.goal_trajectory.points))
+                    else:
+                        self.get_logger().info(f'could not get path to goal')
+                else:
+                    self.get_logger().info(f'car not on same side as goal')
+        # if im going towards a goal point, follow those points instead
         elif self.state == PLANNED_PATH:
-            points = self.goal_points
+            points = self.goal_path
             visited = self.goal_visited
 
         drive_cmd = AckermannDriveStamped()
         
+        # find target
         target = None
         for i in range(len(points)):
             if not visited[i]:
@@ -177,11 +250,32 @@ class PurePursuitWithTargets(Node):
                     target = points[i]
                     break
         
+        # if this means im within lookahead distance if my goal point
+        if self.state == PLANNED_PATH and target is None:
+            if self.dist2(points[-1], p) < 0.15:
+                # self.get_logger().info(f'reached goal point {p}')
+                drive_cmd.drive.speed = 0.0
+                self.drive_pub.publish(drive_cmd)
+
+                if self.start_wait is None:
+                    self.start_wait = self.get_clock().now().to_msg().sec
+                while self.get_clock().now().to_msg().sec - self.start_wait < 3:
+                    return
+                
+                # increase goal index
+                if self.goal_idx < 2:
+                    self.goal_idx += 1
+                    self.get_logger().info(f'incrementing goal idx to {self.goal_idx}')
+                    self.state = DEFAULT
+                    self.start_wait = None
+                return
+            else:
+                target = points[-1]
+        
+        # otherwise stop/ find the correct angle
         if target is None:
-            # self.get_logger().info("no target")
             drive_cmd.drive.speed = 0.0
         else:
-            
             angle = self.find_steering_angle(p, theta, target)
             if np.isnan(angle):
                 # self.get_logger().info("null angle")
@@ -215,18 +309,19 @@ class PurePursuitWithTargets(Node):
         msg.header.frame_id = "map"
 
         # Set the size and color
-        msg.scale.x = 0.1
-        msg.scale.y = 0.1
+        msg.scale.x = 0.15
+        msg.scale.y = 0.15
         msg.color.a = 1.
         msg.color.r = 0.0
         msg.color.g = 0.0
-        msg.color.g = 1.0
+        msg.color.b = 1.0
 
         # Fill the line with the desired values
         pt = Point()
         pt.x = p[0]
         pt.y = p[1]
-        msg.points.append(pt)
+        msg.points = [pt]
+        # msg.points.append(pt)
 
         # Publish the line
         self.point_pub.publish(msg)

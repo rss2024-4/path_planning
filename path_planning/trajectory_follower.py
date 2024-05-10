@@ -221,8 +221,6 @@ class PurePursuit(Node):
         projection = start + t * (end-start)
         return self.dist2(p, projection), projection
 
-
-
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
