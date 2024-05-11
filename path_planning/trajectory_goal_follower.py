@@ -25,6 +25,8 @@ U_TURNING = 3
 RIGHT = 'RIGHT'
 LEFT = 'LEFT'
 
+# TODO: redo uturn to turn for a set number of seconds
+# after uturning, reprocess self.default_points and self.default_visited- precompute the projections and sides in trajectory callback so this is faster
 class PurePursuitWithTargets(Node):
     """ Implements Pure Pursuit trajectory tracking with a fixed lookahead and speed.
     """
@@ -79,6 +81,8 @@ class PurePursuitWithTargets(Node):
                                                     self.goal_cb,
                                                     1)
         
+
+
         # publishes start and goal points for the astar planner
         self.planner_pub = self.create_publisher(PoseArray, "/plan", 1)
         self.map_sub = self.create_subscription(
@@ -214,7 +218,8 @@ class PurePursuitWithTargets(Node):
             car_side, car_idx, car_projection = self.centerline_side(p)
             goal_side, goal_idx, goal_projection = self.goal_points[self.goal_idx][1]
 
-            if car_side != goal_side:
+            # TODO UTURN IF GOAL POINT IS BEHIND YOU
+            if car_side != goal_side :
                 drive_cmd = AckermannDriveStamped()
                 drive_cmd.drive.speed = 0.0
                 self.drive_pub.publish(drive_cmd)
@@ -387,6 +392,7 @@ class PurePursuitWithTargets(Node):
         # Publish the line
         pub.publish(msg)
 
+    # TODO: calculate what side of centerline for each point
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
