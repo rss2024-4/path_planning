@@ -35,11 +35,11 @@ class PurePursuitWithTargets(Node):
         super().__init__("trajectory_goal_follower")
         # self.declare_parameter('odom_topic', "/odom")
         # self.declare_parameter('drive_topic', "/drive")
-        # self.declare_parameter('centerline', 'default')
+        self.declare_parameter('centerline', 'default')
 
         self.odom_topic = '/pf/pose/odom'
         self.drive_topic = "/follower_drive"
-
+        # self.drive_topic = "/vesc/low_level/input/navigation"
         # self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
         self.centerline_path = self.get_parameter('centerline').get_parameter_value().string_value
@@ -60,6 +60,7 @@ class PurePursuitWithTargets(Node):
 
         # which goal point to follow currently
         self.goal_idx = 0
+        self.default_idx = 0
 
         self.trajectory = LineTrajectory("/followed_trajectory")
 
@@ -197,6 +198,8 @@ class PurePursuitWithTargets(Node):
         return LEFT, perp
 
     def goal_cb(self, msg):
+        if len(self.goal_points) == 3:
+            self.goal_points = []
         p = (msg.point.x, msg.point.y)
         side, idx, proj = self.centerline_side(p)
         self.publish_point([proj], self.point_pub)
@@ -222,11 +225,21 @@ class PurePursuitWithTargets(Node):
             return
         
         if len(self.goal_points) != 3:
+            cur_info = self.centerline_side(p)
             # self.get_logger().info("not enough goal points")
+            for i, data in enumerate(self.default_points):
+                # self.get_logger().info(f'checking, cur info: {cur_info} ')
+                if self.is_behind(data[1], cur_info):
+                    self.default_visited[i] = True
+                else:
+                    self.default_visited[i] = False
+                self.state = DEFAULT
+                    # self.get_logger().info('done turn calculations')
             return
         
         points = self.default_points
         visited = self.default_visited
+        visit_idx = self.default_idx
 
         target = None
 
@@ -255,7 +268,7 @@ class PurePursuitWithTargets(Node):
             
             # if close, then check that car is the on the same side
             if goal is not None:
-                self.get_logger().info(f'close to goal point: {goal}, dist {minDist}')
+                self.get_logger().info(f'close to goal point: {self.goal_idx}, dist {minDist}')
 
                 if car_side == goal_side:
                     self.get_logger().info(f'car on same side as goal, go to it')
@@ -320,17 +333,18 @@ class PurePursuitWithTargets(Node):
 
             goal_across = self.uturn_point + (np.array(car_info[2]) - self.uturn_point)*1.5
             
-            # self.get_logger().info(f'uturning to goal, {goal_across}')
+            self.get_logger().info(f'uturning to goal, {goal_across}')
             self.publish_point([goal_across], self.point_pub)
 
-            # if self.dist2(goal_across, p) < 0.1:
+            #if self.dist2(goal_across, p) < 0.1:
             cur_info = self.centerline_side(p)
             if self.last_side == cur_info[0]:
-                self.get_logger().info(f'uturning to goal, {goal_across}, cur info {cur_info[0]}')
+                #self.get_logger().info(f'uturning to goal, {goal_across}, cur info {cur_info[0]}')
+                self.get_logger().info(f'still turning to goal')
                 self.pure_pursuit(goal_across, p, theta)
                 return
-
-            # self.get_logger().info(f'reached uturn goal {p}, cur_side: {cur_info[0]} ')
+            cur_info = self.centerline_side(p)
+            self.get_logger().info(f'reached uturn goal {p}, cur_side: {cur_info[0]} ')
             drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.speed = 0.0
             self.drive_pub.publish(drive_cmd)
@@ -347,12 +361,13 @@ class PurePursuitWithTargets(Node):
         
         # find target
         # target = None
-        for i in range(len(points)):
+        for i in range(visit_idx, len(points)):
             if not visited[i]:
                 if self.dist2(points[i][0], p) < self.lookahead ** 2:
                     visited[i] = True
                 else:
                     target = points[i][0]
+                    visit_idx = i
                     break
         
         # if this means im within lookahead distance if my goal point
@@ -365,7 +380,7 @@ class PurePursuitWithTargets(Node):
 
                 if self.start_wait is None:
                     self.start_wait = self.get_clock().now().to_msg().sec
-                while self.get_clock().now().to_msg().sec - self.start_wait < 3:
+                while self.get_clock().now().to_msg().sec - self.start_wait < 8:
                     return
                 
                 # increase goal index
@@ -393,7 +408,7 @@ class PurePursuitWithTargets(Node):
                 # self.get_logger().info("null angle")
                 angle = 0.0
             if np.abs(angle) < 0.05:
-                drive_cmd.drive.speed = 2.0
+                drive_cmd.drive.speed = 1.2
             else:
                 drive_cmd.drive.speed = self.speed*1.0
 

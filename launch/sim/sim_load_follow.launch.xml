@@ -4,7 +4,6 @@
         <param name="publish" value="True"/>
     </node>
     <node pkg="path_planning" exec="trajectory_goal_follower" name="trajectory_goal_follower">
-        <param from="$(find-pkg-share path_planning)/config/sim/sim_config.yaml"/>
         <param name="centerline" value="$(find-pkg-share path_planning)/example_trajectories/full-lane.traj"/>
     </node>
 </launch>
