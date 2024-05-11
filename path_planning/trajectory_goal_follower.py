@@ -41,6 +41,7 @@ class PurePursuitWithTargets(Node):
         self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
         self.centerline_path = self.get_parameter('centerline').get_parameter_value().string_value
         self.centerline = []
+        self.center_segments = [] # segment_idx refer to the segments in this array
 
         self.centerline_trajectory = LineTrajectory(node=self, viz_namespace="/center_trajectory")
         self.load_centerline(self.centerline_path)
@@ -95,7 +96,7 @@ class PurePursuitWithTargets(Node):
         # points are tuples: (float, float)
         self.goal_points = [] # list of tuples: (point, (side, segment_idx, projection_onto_segment))
         self.trajectory_points = [] # list of tuples: (point, (side, segment_idx, projection_onto_segment))
-        self.center_segments = [] # segment_idx refer to the segments in this array
+        
         self.state = DEFAULT
         self.initialized_map = False
         self.goal_trajectory = LineTrajectory(node=self, viz_namespace="/goal_trajectory")
@@ -104,6 +105,8 @@ class PurePursuitWithTargets(Node):
         self.previous_target = None
 
         self.turn_starte_time = 0.0
+
+        self.uturn_point = None
 
     def load_centerline(self, path):
         path = os.path.expandvars(path)
@@ -115,12 +118,12 @@ class PurePursuitWithTargets(Node):
                 temp.append((p["x"], p["y"]))
                 self.centerline.append(np.array((p["x"], p["y"])))
 
-        self.center_segments = []
         for i in range(len(temp) - 1):
             point = (temp[i][0], temp[i][1])
             next_point = (temp[i+1][0], temp[i+1][1])
-            self.segments.append((point, next_point))
+            self.center_segments.append((point, next_point))
         
+        self.get_logger().info(f'center segments len {len(self.center_segments)}')
         self.centerline_trajectory.points = self.centerline
         self.centerline_trajectory.publish_viz()
 
@@ -230,24 +233,16 @@ class PurePursuitWithTargets(Node):
 
             car_side, car_idx, car_projection = self.centerline_side(p)
             goal_side, goal_idx, goal_projection = self.goal_points[self.goal_idx][1]
+            self.last_side = car_side
 
-            # TODO UTURN IF GOAL POINT IS BEHIND YOU
-            # if car_side != goal_side :
-            #     drive_cmd = AckermannDriveStamped()
-            #     drive_cmd.drive.speed = 0.0
-            #     self.drive_pub.publish(drive_cmd)
-
-            #     turn_msg = String()
-            #     turn_msg.data = 'start'
-            #     self.uturn_pub.publish(turn_msg)
-            #     self.get_logger().info("have to uturn")
-            #     self.state = U_TURNING
-            #     return
-            if self.is_behind((None, (goal_side, goal_idx, goal_projection)), (None, (car_side, goal_idx, goal_projection))):
-                self.turn_starte_time = self.get_time()
+            if self.is_behind((goal_side, goal_idx, goal_projection), (car_side, car_idx, car_projection)):
+                self.get_logger().info(f'have to uturn is behind {self.goal_points[self.goal_idx][1]}, carside {car_side}')
+                # self.turn_start_time = self.get_time()
+                self.uturn_point = p
                 self.state = U_TURNING
+                return
 
-
+            # self.get_logger().info("here")
             # check if close to next goal point
             d = self.dist2(p, self.goal_points[self.goal_idx][0])
             if d < 12 and d < minDist:
@@ -278,26 +273,27 @@ class PurePursuitWithTargets(Node):
                             self.goal_trajectory.points = traj
                             self.goal_trajectory.publish_viz()
 
-                            self.goal_path = np.array(self.goal_trajectory.points)
+                            # self.goal_path = np.array(self.goal_trajectory.points)
+                            self.goal_path = [(p, None) for p in self.goal_trajectory.points]
                             self.goal_visited = np.array([False] * len(self.goal_trajectory.points))
                         else:
                             self.get_logger().info(f'could not get path to goal')
                     else:
                         self.state = PLANNED_PATH
-                        self.goal_path = [goal]
+                        self.goal_path = [(goal, None)]
                         self.goal_visited = [False]
 
                     if self.state == PLANNED_PATH:
                         self.get_logger().info(f'checking that no target points will be passed')
-                        for i, pt in enumerate(self.default_points):
+                        for i, (pt, _) in enumerate(self.default_points):
                             if self.default_visited[i]:
                                 continue
                             _, pt_idx, pt_proj = self.centerline_side(pt)
                             if goal_idx > pt_idx:
                                 self.default_visited[i] = True
                             elif goal_idx == pt_idx:
-                                self.get_logger().info(f'checking {i}, goal: {goal_idx}, pt: {pt_idx}')
-                                self.get_logger().info(f'checking {i}, goalp: {goal_projection}, ptp: {pt_proj}')
+                                # self.get_logger().info(f'checking {i}, goal: {goal_idx}, pt: {pt_idx}')
+                                # self.get_logger().info(f'checking {i}, goalp: {goal_projection}, ptp: {pt_proj}')
                                 if self.dist2(self.centerline[goal_idx], goal_projection) > self.dist2(self.centerline[goal_idx], pt_proj):
                                     self.default_visited[i] = True
                             
@@ -306,27 +302,59 @@ class PurePursuitWithTargets(Node):
 
         # if im going towards a goal point, follow those points instead
         elif self.state == PLANNED_PATH:
+            # self.get_logger().info(f'following planned')
             points = self.goal_path
             visited = self.goal_visited
         elif self.state == U_TURNING:
-            if self.get_time() - self.turn_start_time < 1.5:
-                drive_msg = self.create_drive_msg(1.5, 100)
-                self.drive_pub.publish(drive_cmd)
+            # if self.get_time() - self.turn_start_time < 2.:
+            # if self.last_side == self.centerline_side(p)[0]:
+                
+            #     drive_msg = self.create_drive_msg(1.5, 0.2)
+            #     self.drive_pub.publish(drive_msg)
+            #     return
+
+            car_info = self.centerline_side(self.uturn_point)
+
+            goal_across = self.uturn_point + (np.array(car_info[2]) - self.uturn_point)*1.5
+            
+            # self.get_logger().info(f'uturning to goal, {goal_across}')
+            self.publish_point([goal_across], self.point_pub)
+
+            # if self.dist2(goal_across, p) < 0.1:
+            cur_info = self.centerline_side(p)
+            if self.last_side == cur_info[0]:
+                self.get_logger().info(f'uturning to goal, {goal_across}, cur info {cur_info[0]}')
+                self.pure_pursuit(goal_across, p, theta)
                 return
-            self.state = DEFAULT
+
+            # self.get_logger().info(f'reached uturn goal {p}, cur_side: {cur_info[0]} ')
+            drive_cmd = AckermannDriveStamped()
+            drive_cmd.drive.speed = 0.0
+            self.drive_pub.publish(drive_cmd)
+            
+            for i, data in enumerate(self.default_points):
+                # self.get_logger().info(f'checking, cur info: {cur_info} ')
+                if self.is_behind(data[1], cur_info):
+                    self.default_visited[i] = True
+                else:
+                    self.default_visited[i] = False
+                self.state = DEFAULT
+                    # self.get_logger().info('done turn calculations')
+            return
+        
         # find target
         # target = None
         for i in range(len(points)):
             if not visited[i]:
-                if self.dist2(points[i], p) < self.lookahead ** 2:
+                if self.dist2(points[i][0], p) < self.lookahead ** 2:
                     visited[i] = True
                 else:
-                    target = points[i]
+                    target = points[i][0]
                     break
         
         # if this means im within lookahead distance if my goal point
         if self.state == PLANNED_PATH and target is None:
-            if self.dist2(points[-1], p) < 0.15:
+            if self.dist2(points[-1][0], p) < 0.15:
                 # self.get_logger().info(f'reached goal point {p}')
                 drive_cmd = AckermannDriveStamped()
                 drive_cmd.drive.speed = 0.0
@@ -345,7 +373,7 @@ class PurePursuitWithTargets(Node):
                     self.start_wait = None
                 return
             else:
-                target = points[-1]
+                target = points[-1][0]
         
         # otherwise stop/ find the correct angle
         self.pure_pursuit(target, p, theta)
@@ -420,35 +448,42 @@ class PurePursuitWithTargets(Node):
         self.trajectory.fromPoseArray(msg)
         self.trajectory.publish_viz()
 
-        self.default_points = np.array(self.trajectory.points)
+        # self.default_points = np.array(self.trajectory.points)
+        self.default_points = []
         self.default_visited = np.array([False] * len(self.trajectory.points))
 
         # calculate what side of centerline for each point
         self.trajectory_points = []
-        for p in self.default_points:
+        for p in self.trajectory.points:
             side, segment, projection_onto_center = self.centerline_side(p)
             self.trajectory_points.append((p, (side, segment, projection_onto_center)))
+            self.default_points.append((p, (side, segment, projection_onto_center)))
 
         self.initialized_traj = True
 
     def is_behind(self, point_with_data, car_point):
         '''
         Return True if point_1 is behind point_2
-        point_with_data is defined to be: (point, (side, segment_idx, projection_onto_segment))
+        point_with_data is defined to be: (side, segment_idx, projection_onto_segment))
         '''
-        car_side = car_point[1][0]
+        car_side = car_point[0]
 
-        segment_idx = point_with_data[1][1]
-        proj = np.array(point_with_data[1][2])
+        segment_side, segment_idx, _ = point_with_data
+        proj = np.array(point_with_data[2])
 
-        car_segment_idx = car_point[1][1]
-        car_proj = np.array(car_point[1][2])
+        car_segment_idx = car_point[1]
+        car_proj = np.array(car_point[2])
 
-        if car_side == RIGHT:
+        if car_side == RIGHT: # if right
+            # if the segment is before then point is before
             if segment_idx < car_segment_idx:
                 return True
+            # if equal
             elif segment_idx == car_segment_idx:
+                # try:
                 p0, _ = self.center_segments[segment_idx]
+                # except Exception as e:
+                #     self.get_logger().info(f'except {e}, idx {segment_idx}, len {len(self.center_segments)}')
                 p0 = np.array(p0)
                 v1 = proj - p0
                 v2 = car_proj - p0
@@ -459,14 +494,16 @@ class PurePursuitWithTargets(Node):
             else:
                 return False
         elif car_side == LEFT:
+            if segment_side == RIGHT:
+                return True
             if segment_idx > car_segment_idx:
                 return True
             elif segment_idx == car_segment_idx:
-                _, pf = self.center_segments[segment_idx]
-                pf = np.array(pf)
-                v1 = proj - pf
-                v2 = car_proj - pf
-                if v1.T @ v1 < v2.T @ v2: # if p1 projection closer to end p1 is behind p2
+                p0, _ = self.center_segments[segment_idx]
+                p0 = np.array(p0)
+                v1 = proj - p0
+                v2 = car_proj - p0
+                if v1.T @ v1 > v2.T @ v2: # if p1 projection closer to end p1 is behind p2
                     return True
                 else:
                     return False
