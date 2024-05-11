@@ -91,8 +91,11 @@ class PurePursuitWithTargets(Node):
             self.map_cb,
             1
         )
-
-        self.goal_points = []
+        # Point_with_data is defined to be: (point, (side, segment_idx, projection_onto_segment))
+        # points are tuples: (float, float)
+        self.goal_points = [] # list of tuples: (point, (side, segment_idx, projection_onto_segment))
+        self.trajectory_points = [] # list of tuples: (point, (side, segment_idx, projection_onto_segment))
+        self.center_segments = [] # segment_idx refer to the segments in this array
         self.state = DEFAULT
         self.initialized_map = False
         self.goal_trajectory = LineTrajectory(node=self, viz_namespace="/goal_trajectory")
@@ -100,13 +103,23 @@ class PurePursuitWithTargets(Node):
         self.start_wait = None
         self.previous_target = None
 
+        self.turn_starte_time = 0.0
+
     def load_centerline(self, path):
         path = os.path.expandvars(path)
 
+        temp = []
         with open(path) as json_file:
             json_data = json.load(json_file)
             for p in json_data["points"]:
+                temp.append((p["x"], p["y"]))
                 self.centerline.append(np.array((p["x"], p["y"])))
+
+        self.center_segments = []
+        for i in range(len(temp) - 1):
+            point = (temp[i][0], temp[i][1])
+            next_point = (temp[i+1][0], temp[i+1][1])
+            self.segments.append((point, next_point))
         
         self.centerline_trajectory.points = self.centerline
         self.centerline_trajectory.publish_viz()
@@ -219,17 +232,21 @@ class PurePursuitWithTargets(Node):
             goal_side, goal_idx, goal_projection = self.goal_points[self.goal_idx][1]
 
             # TODO UTURN IF GOAL POINT IS BEHIND YOU
-            if car_side != goal_side :
-                drive_cmd = AckermannDriveStamped()
-                drive_cmd.drive.speed = 0.0
-                self.drive_pub.publish(drive_cmd)
+            # if car_side != goal_side :
+            #     drive_cmd = AckermannDriveStamped()
+            #     drive_cmd.drive.speed = 0.0
+            #     self.drive_pub.publish(drive_cmd)
 
-                turn_msg = String()
-                turn_msg.data = 'start'
-                self.uturn_pub.publish(turn_msg)
-                self.get_logger().info("have to uturn")
+            #     turn_msg = String()
+            #     turn_msg.data = 'start'
+            #     self.uturn_pub.publish(turn_msg)
+            #     self.get_logger().info("have to uturn")
+            #     self.state = U_TURNING
+            #     return
+            if self.is_behind((None, (goal_side, goal_idx, goal_projection)), (None, (car_side, goal_idx, goal_projection))):
+                self.turn_starte_time = self.get_time()
                 self.state = U_TURNING
-                return
+
 
             # check if close to next goal point
             d = self.dist2(p, self.goal_points[self.goal_idx][0])
@@ -292,8 +309,11 @@ class PurePursuitWithTargets(Node):
             points = self.goal_path
             visited = self.goal_visited
         elif self.state == U_TURNING:
-            return
-        
+            if self.get_time() - self.turn_start_time < 1.5:
+                drive_msg = self.create_drive_msg(1.5, 100)
+                self.drive_pub.publish(drive_cmd)
+                return
+            self.state = DEFAULT
         # find target
         # target = None
         for i in range(len(points)):
@@ -392,7 +412,7 @@ class PurePursuitWithTargets(Node):
         # Publish the line
         pub.publish(msg)
 
-    # TODO: calculate what side of centerline for each point
+    
     def trajectory_callback(self, msg):
         self.get_logger().info(f"Receiving new trajectory {len(msg.poses)} points")
 
@@ -403,12 +423,56 @@ class PurePursuitWithTargets(Node):
         self.default_points = np.array(self.trajectory.points)
         self.default_visited = np.array([False] * len(self.trajectory.points))
 
-        points = []
+        # calculate what side of centerline for each point
+        self.trajectory_points = []
         for p in self.default_points:
-            _, _, proj = self.centerline_side(p)
-            points.append(proj)
+            side, segment, projection_onto_center = self.centerline_side(p)
+            self.trajectory_points.append((p, (side, segment, projection_onto_center)))
 
         self.initialized_traj = True
+
+    def is_behind(self, point_with_data, car_point):
+        '''
+        Return True if point_1 is behind point_2
+        point_with_data is defined to be: (point, (side, segment_idx, projection_onto_segment))
+        '''
+        car_side = car_point[1][0]
+
+        segment_idx = point_with_data[1][1]
+        proj = np.array(point_with_data[1][2])
+
+        car_segment_idx = car_point[1][1]
+        car_proj = np.array(car_point[1][2])
+
+        if car_side == RIGHT:
+            if segment_idx < car_segment_idx:
+                return True
+            elif segment_idx == car_segment_idx:
+                p0, _ = self.center_segments[segment_idx]
+                p0 = np.array(p0)
+                v1 = proj - p0
+                v2 = car_proj - p0
+                if v1.T @ v1 < v2.T @ v2: # if p1 projection closer to start p1 is behind p2
+                    return True
+                else:
+                    return False
+            else:
+                return False
+        elif car_side == LEFT:
+            if segment_idx > car_segment_idx:
+                return True
+            elif segment_idx == car_segment_idx:
+                _, pf = self.center_segments[segment_idx]
+                pf = np.array(pf)
+                v1 = proj - pf
+                v2 = car_proj - pf
+                if v1.T @ v1 < v2.T @ v2: # if p1 projection closer to end p1 is behind p2
+                    return True
+                else:
+                    return False
+            else:
+                return False
+        raise Exception("not a side")
 
     
     def pose_to_T(self, pose_msg):
@@ -424,6 +488,17 @@ class PurePursuitWithTargets(Node):
             [np.sin(th),  np.cos(th), y],
             [         0,           0, 1],
         ])
+    
+    def create_drive_msg(self, vel, angle):
+        cmd = AckermannDriveStamped()
+        cmd.header.stamp = self.get_clock().now().to_msg()
+        cmd.header.frame_id = 'map'
+        cmd.drive.steering_angle = float(angle)
+        cmd.drive.speed = float(vel)
+        return cmd
+    
+    def get_time(self):
+        return self.get_clock().now().to_msg().sec + (self.get_clock().now().to_msg().nanosec * (10**-9))
 
 
 def main(args=None):
