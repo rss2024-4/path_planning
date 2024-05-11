@@ -37,6 +37,8 @@ class PurePursuitWithTargets(Node):
         # self.declare_parameter('drive_topic', "/drive")
         self.declare_parameter('centerline', 'default')
 
+        self.start_point = (-18.81313705444336, -1.1049232482910156)
+
         self.odom_topic = '/pf/pose/odom'
         # self.odom_topic = '/odom'
         self.drive_topic = "/follower_drive"
@@ -204,6 +206,9 @@ class PurePursuitWithTargets(Node):
         self.publish_point([proj], self.point_pub)
         self.get_logger().info(f'got goal point: {msg.point}, side: {side}, idx: {idx}, projection: {proj}')
         self.goal_points.append(((msg.point.x, msg.point.y), self.centerline_side(p)))
+
+        if len(self.goal_points) == 3:
+            self.goal_points.append((self.start_point), self.centerline_side(self.start_point))
 
     def dist2(self, p1, p2):
         return (p1[0]-p2[0])**2 + (p1[1] - p2[1])**2
