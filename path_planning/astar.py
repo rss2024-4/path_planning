@@ -5,10 +5,9 @@ import os
 import json
 
 class ASTAR:
-
     def __init__(self, obstacles, path, logger):
         self.centerline = []
-        self.load_centerline(path)
+        # self.load_centerline(path)
 
         # self.grid = self.Grid(obstacles, self.centerline, logger, .125)
         self.grid = self.Grid(obstacles, self.centerline, logger, 0.125)
@@ -42,7 +41,7 @@ class ASTAR:
     class Grid:
         def __init__(self, obstacles, centerline, logger, cell_size=1):
             #  list of points representing the centerline
-            self.centerline = centerline
+            # self.centerline = centerline
             self.cell_size = cell_size
             self.width_min = -62.0
             self.width_max = 27.0

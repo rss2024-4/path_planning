@@ -38,10 +38,9 @@ class PurePursuitWithTargets(Node):
         self.declare_parameter('centerline', 'default')
 
         self.odom_topic = '/pf/pose/odom'
+        # self.odom_topic = '/odom'
         self.drive_topic = "/follower_drive"
-        # self.drive_topic = "/vesc/low_level/input/navigation"
-        # self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        
         self.centerline_path = self.get_parameter('centerline').get_parameter_value().string_value
         self.centerline = []
         self.center_segments = [] # segment_idx refer to the segments in this array
@@ -251,17 +250,17 @@ class PurePursuitWithTargets(Node):
             goal_side, goal_idx, goal_projection = self.goal_points[self.goal_idx][1]
             self.last_side = car_side
 
-            if self.is_behind((goal_side, goal_idx, goal_projection), (car_side, car_idx, car_projection)):
+            if self.is_behind((goal_side, goal_idx, goal_projection), (car_side, car_idx, car_projection)) \
+                and self.dist2(goal_projection, car_projection) > 0.6:
                 self.get_logger().info(f'have to uturn is behind {self.goal_points[self.goal_idx][1]}, carside {car_side}')
                 # self.turn_start_time = self.get_time()
                 self.uturn_point = p
                 self.state = U_TURNING
                 return
 
-            # self.get_logger().info("here")
             # check if close to next goal point
             d = self.dist2(p, self.goal_points[self.goal_idx][0])
-            if d < 12 and d < minDist:
+            if d < 11 and d < minDist:
                 minDist = d
                 goal, _ = self.goal_points[self.goal_idx]
                 self.get_logger().info(f'goalidx, {self.goal_idx}')
@@ -295,6 +294,7 @@ class PurePursuitWithTargets(Node):
                         else:
                             self.get_logger().info(f'could not get path to goal')
                     else:
+                        self.get_logger().info(f"fake plan to goal")
                         self.state = PLANNED_PATH
                         self.goal_path = [(goal, None)]
                         self.goal_visited = [False]
@@ -302,32 +302,20 @@ class PurePursuitWithTargets(Node):
                     if self.state == PLANNED_PATH:
                         self.get_logger().info(f'checking that no target points will be passed')
                         for i, (pt, _) in enumerate(self.default_points):
-                            if self.default_visited[i]:
-                                continue
-                            _, pt_idx, pt_proj = self.centerline_side(pt)
-                            if goal_idx > pt_idx:
-                                self.default_visited[i] = True
-                            elif goal_idx == pt_idx:
-                                # self.get_logger().info(f'checking {i}, goal: {goal_idx}, pt: {pt_idx}')
-                                # self.get_logger().info(f'checking {i}, goalp: {goal_projection}, ptp: {pt_proj}')
-                                if self.dist2(self.centerline[goal_idx], goal_projection) > self.dist2(self.centerline[goal_idx], pt_proj):
-                                    self.default_visited[i] = True
+                            self.default_visited[i] = self.is_behind(self.centerline_side(pt), self.centerline_side(goal))
+                    return
                             
                 else:
                     self.get_logger().info(f'car not on same side as goal')
+            # else:
+            #     self.get_logger().info(f'default no goal')
 
         # if im going towards a goal point, follow those points instead
         elif self.state == PLANNED_PATH:
-            # self.get_logger().info(f'following planned')
+            # self.get_logger().info(f'following planned, {self.goal_path}')
             points = self.goal_path
             visited = self.goal_visited
         elif self.state == U_TURNING:
-            # if self.get_time() - self.turn_start_time < 2.:
-            # if self.last_side == self.centerline_side(p)[0]:
-                
-            #     drive_msg = self.create_drive_msg(1.5, 0.2)
-            #     self.drive_pub.publish(drive_msg)
-            #     return
 
             car_info = self.centerline_side(self.uturn_point)
 
@@ -339,11 +327,11 @@ class PurePursuitWithTargets(Node):
             #if self.dist2(goal_across, p) < 0.1:
             cur_info = self.centerline_side(p)
             if self.last_side == cur_info[0]:
-                #self.get_logger().info(f'uturning to goal, {goal_across}, cur info {cur_info[0]}')
-                self.get_logger().info(f'still turning to goal')
+                self.get_logger().info(f'still turning to goal, {cur_info[0]}')
                 self.pure_pursuit(goal_across, p, theta)
                 return
-            cur_info = self.centerline_side(p)
+            
+            # cur_info = self.centerline_side(p)
             self.get_logger().info(f'reached uturn goal {p}, cur_side: {cur_info[0]} ')
             drive_cmd = AckermannDriveStamped()
             drive_cmd.drive.speed = 0.0
@@ -351,17 +339,17 @@ class PurePursuitWithTargets(Node):
             
             for i, data in enumerate(self.default_points):
                 # self.get_logger().info(f'checking, cur info: {cur_info} ')
-                if self.is_behind(data[1], cur_info):
-                    self.default_visited[i] = True
-                else:
-                    self.default_visited[i] = False
+                self.default_visited[i] = self.is_behind(data[1], cur_info)
+                #     = True
+                # else:
+                #     self.default_visited[i] = False
                 self.state = DEFAULT
-                    # self.get_logger().info('done turn calculations')
+            self.get_logger().info(f'done turn calculations, viisted {self.default_visited}')
             return
         
         # find target
         # target = None
-        for i in range(visit_idx, len(points)):
+        for i in range(0, len(points)):
             if not visited[i]:
                 if self.dist2(points[i][0], p) < self.lookahead ** 2:
                     visited[i] = True
@@ -370,10 +358,17 @@ class PurePursuitWithTargets(Node):
                     visit_idx = i
                     break
         
+        # if target is None:
+        #     self.get_logger().info(f'pure pursuit fail at indx {visit_idx}, state is {self.state}')
+        # else:
+        #     self.get_logger().info(f'pure pursuit target at indx {visit_idx}, state is {self.state}')
+
         # if this means im within lookahead distance if my goal point
-        if self.state == PLANNED_PATH and target is None:
-            if self.dist2(points[-1][0], p) < 0.15:
-                # self.get_logger().info(f'reached goal point {p}')
+        cur_goal_pt = self.goal_points[self.goal_idx][0]
+        if self.state == PLANNED_PATH and (target is None or self.dist2(cur_goal_pt, p) < 0.19):
+            # self.get_logger().info(f'maybe reached goal point {cur_goal_pt}???, dist {self.dist2(cur_goal_pt, p)}')
+            if self.dist2(cur_goal_pt, p) < 0.19:
+                self.get_logger().info(f'reached goal point {p}')
                 drive_cmd = AckermannDriveStamped()
                 drive_cmd.drive.speed = 0.0
                 self.drive_pub.publish(drive_cmd)
@@ -397,18 +392,22 @@ class PurePursuitWithTargets(Node):
         self.pure_pursuit(target, p, theta)
 
     
-    def pure_pursuit(self, target, p, theta):
+    def pure_pursuit(self, target, p, theta, turn=False):
         drive_cmd = AckermannDriveStamped()
         # otherwise stop/ find the correct angle
         if target is None:
-            drive_cmd.drive.speed = 0.0
+            self.get_logger().info("pure pursuit target missing um go sraight??")
+            drive_cmd.drive.speed = 0.
         else:
             angle = self.find_steering_angle(p, theta, target)
             if np.isnan(angle):
-                # self.get_logger().info("null angle")
+                self.get_logger().info("null angle")
                 angle = 0.0
             if np.abs(angle) < 0.05:
+                # if not turn:
                 drive_cmd.drive.speed = 1.2
+                # else:
+
             else:
                 drive_cmd.drive.speed = self.speed*1.0
 
