@@ -65,7 +65,8 @@ class PurePursuitWithTargets(Node):
                                                  self.trajectory_callback,
                                                  1)
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                               self.drive_topic,
+                                            #    self.drive_topic,
+                                                "/follower_drive",
                                                1)
         self.odom_sub = self.create_subscription(Odometry,
                                                  self.odom_topic,
