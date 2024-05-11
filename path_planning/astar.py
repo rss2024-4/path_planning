@@ -53,8 +53,8 @@ class ASTAR:
             # self.height_min = -4.0
             # self.height_max = 40.0 
             self.logger = logger
-            width_range = np.linspace(self.width_min, self.width_max, (self.width_max - self.width_min)/self.cell_size + 1)
-            height_range = np.linspace(self.height_min, self.height_max, (self.height_max - self.height_min)/self.cell_size + 1)
+            width_range = np.linspace(self.width_min, self.width_max, int((self.width_max - self.width_min)/self.cell_size + 1))
+            height_range = np.linspace(self.height_min, self.height_max, int((self.height_max - self.height_min)/self.cell_size + 1))
             self.nodes = {(x, y): ASTAR.Node(x, y) for x in width_range for y in height_range}
             self.place_obstacles(obstacles)
             # self.calculate_vectors()

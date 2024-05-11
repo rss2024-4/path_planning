@@ -33,12 +33,15 @@ class PurePursuitWithTargets(Node):
 
     def __init__(self):
         super().__init__("trajectory_goal_follower")
-        self.declare_parameter('odom_topic', "/odom")
-        self.declare_parameter('drive_topic', "/drive")
-        self.declare_parameter('centerline', 'default')
+        # self.declare_parameter('odom_topic', "/odom")
+        # self.declare_parameter('drive_topic', "/drive")
+        # self.declare_parameter('centerline', 'default')
 
-        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
+        self.odom_topic = '/pf/pose/odom'
+        self.drive_topic = "/follower_drive"
+
+        # self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
+        # self.drive_topic = self.get_parameter('drive_topic').get_parameter_value().string_value
         self.centerline_path = self.get_parameter('centerline').get_parameter_value().string_value
         self.centerline = []
         self.center_segments = [] # segment_idx refer to the segments in this array
@@ -65,8 +68,7 @@ class PurePursuitWithTargets(Node):
                                                  self.trajectory_callback,
                                                  1)
         self.drive_pub = self.create_publisher(AckermannDriveStamped,
-                                            #    self.drive_topic,
-                                                "/follower_drive",
+                                               self.drive_topic,
                                                1)
         self.odom_sub = self.create_subscription(Odometry,
                                                  self.odom_topic,
